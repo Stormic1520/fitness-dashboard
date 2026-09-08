@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Food diary</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1 data-i18n="pageTitle">Food diary</h1>
+    <select class="lang-select" id="langSelect" aria-label="Language">
+      <option value="en">🌐 English</option>
+      <option value="es">🌐 Español</option>
+      <option value="zh">🌐 中文</option>
+    </select>
+  </header>
+
+  <nav class="site-nav">
+    <a href="index.html" data-i18n="navCalc">Calculator</a>
+    <a href="diario.html" class="active" data-i18n="navDiary">Food diary</a>
+    <a href="snapshots.html" data-i18n="navSnap">Snapshots</a>
+  </nav>
+
+  <!-- Day + budget -->
+  <section class="card">
+    <h2 data-i18n="secDay">Day & budget</h2>
+    <div class="grid">
+      <div class="field"><label data-i18n="lblDate">Date</label><input type="date" id="date"></div>
+      <div class="field"><label data-i18n="lblDayType">Day type</label><select id="dayType"></select></div>
+    </div>
+    <div class="notice info" id="noTargets" style="display:none"></div>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <!-- Cheat counter -->
+  <section class="card">
+    <h2 data-i18n="secCheat">Cheat meals</h2>
+    <div class="cheat-counter" id="cheatCounter">
+      <span id="cheatText"></span>
+      <span class="count" id="cheatCount">0/2</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn cheat" id="cheatToggle" data-i18n="cheatBtn">🍕 Log a cheat meal</button>
+    </div>
+    <div class="subform" id="cheatForm">
+      <div class="grid">
+        <div class="field field-wide"><label data-i18n="cheatName">What was it?</label><input type="text" id="cheatDesc" maxlength="60"></div>
+        <div class="field"><label data-i18n="cheatKcal">Estimated kcal (optional)</label><input type="number" id="cheatKcalIn" min="0" step="10"></div>
+      </div>
+      <div class="btn-row"><button class="btn cheat" id="cheatAdd" data-i18n="cheatSave">Log it</button></div>
+    </div>
+  </section>
+
+  <!-- Today's log -->
+  <section class="card">
+    <h2 data-i18n="secLog">Today's log</h2>
+    <div class="table-wrap">
+      <table id="logTable" style="display:none">
+        <thead><tr>
+          <th data-i18n="thFood">Food</th><th data-i18n="thQty">Amount</th>
+          <th>kcal</th><th data-i18n="thC">Carbs</th><th data-i18n="thF">Fat</th><th data-i18n="thP">Protein</th><th></th>
+        </tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+      <div class="empty-msg" id="logEmpty"></div>
+    </div>
+  </section>
+
+  <!-- Add entry -->
+  <section class="card">
+    <h2 data-i18n="secAdd">Add to today</h2>
+    <div class="grid">
+      <div class="field field-wide"><label data-i18n="lblSearch">Search food bank</label>
+        <input type="text" id="foodSearch" data-i18n-ph="phSearch" placeholder="Type to filter…"></div>
+      <div class="field field-wide"><label data-i18n="lblFood">Food</label><select id="foodSelect"></select></div>
+      <div class="field"><label id="qtyLabel" data-i18n="lblQtyG">Amount (g)</label><input type="number" id="qty" min="0" step="1"></div>
+      <div class="field" style="align-self:end"><button class="btn block" id="addEntry" data-i18n="btnAdd">Add</button></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" id="manualToggle" data-i18n="btnManual">✍️ Manual entry</button>
+    </div>
+    <div class="subform" id="manualForm">
+      <div class="grid">
+        <div class="field field-wide"><label data-i18n="mName">Name</label><input type="text" id="mName" maxlength="60"></div>
+        <div class="field"><label>kcal</label><input type="number" id="mKcal" min="0" step="1"></div>
+        <div class="field"><label data-i18n="thC">Carbs</label><input type="number" id="mC" min="0" step="0.1"></div>
+        <div class="field"><label data-i18n="thF">Fat</label><input type="number" id="mF" min="0" step="0.1"></div>
+        <div class="field"><label data-i18n="thP">Protein</label><input type="number" id="mP" min="0" step="0.1"></div>
+      </div>
+      <div class="btn-row"><button class="btn" id="mAdd" data-i18n="btnAdd">Add</button></div>
+    </div>
+  </section>
+
+  <!-- Food bank -->
+  <section class="card">
+    <h2 data-i18n="secFoods">Food bank</h2>
+    <div class="grid">
+      <div class="field field-wide"><label data-i18n="fName">Name</label><input type="text" id="fName" maxlength="60"></div>
+      <div class="field"><label data-i18n="fUnit">Type</label>
+        <select id="fUnit">
+          <option value="g" data-i18n="unitG">per 100 g</option>
+          <option value="p" data-i18n="unitP">per portion</option>
+        </select>
+      </div>
+      <div class="field" id="fLabelField" style="display:none">
+        <label data-i18n="fLabel">Portion label</label>
+        <input type="text" id="fLabel" maxlength="20" data-i18n-ph="phLabel" placeholder="1 egg / 1 slice">
+      </div>
+      <div class="field"><label id="fKcalLabel">kcal</label><input type="number" id="fKcal" min="0" step="1"></div>
+      <div class="field"><label data-i18n="thC">Carbs</label><input type="number" id="fC" min="0" step="0.1"></div>
+      <div class="field"><label data-i18n="thF">Fat</label><input type="number" id="fF" min="0" step="0.1"></div>
+      <div class="field"><label data-i18n="thP">Protein</label><input type="number" id="fP" min="0" step="0.1"></div>
+    </div>
+    <div class="btn-row"><button class="btn" id="fAdd" data-i18n="fSave">Save food</button></div>
+    <div class="table-wrap" style="margin-top:14px">
+      <table id="foodTable" style="display:none">
+        <thead><tr>
+          <th data-i18n="thFood">Food</th><th data-i18n="fUnit">Type</th>
+          <th>kcal</th><th data-i18n="thC">C</th><th data-i18n="thF">F</th><th data-i18n="thP">P</th><th></th>
+        </tr></thead>
+        <tbody id="foodBody"></tbody>
+      </table>
+      <div class="empty-msg" id="foodEmpty"></div>
+    </div>
+  </section>
+
+  <footer data-i18n="footer"></footer>
+</div>
+
+<script src="app.js"></script>
+<script>
+(function(){
+  "use strict";
+  var K = FT.KEYS, r0 = FT.r0, r1 = FT.r1;
+
+  var I18N = {
+    en:{
+      pageTitle:"Food diary", navCalc:"Calculator", navDiary:"Food diary", navSnap:"Snapshots",
+      secDay:"Day & budget", lblDate:"Date", lblDayType:"Day type",
+      typeHigh:"High-carb day", typeLow:"Low-carb day", typeBulk:"Bulk day", typeNT:"Daily plan (no training)",
+      noTargets:"No targets found — open the Calculator page first so it can publish your daily budget.",
+      barKcal:"Calories", barC:"Carbs", barF:"Fat", barP:"Protein", left:"left", over:"over",
+      secCheat:"Cheat meals", cheatMonthText:"Cheat meals this month (max 2):",
+      cheatBtn:"🍕 Log a cheat meal", cheatName:"What was it?", cheatKcal:"Estimated kcal (optional)",
+      cheatSave:"Log it", cheatDefault:"Cheat meal",
+      cheatOverConfirm:"Monthly cheat budget (2) is already used. Log it anyway? It will be marked as over-budget.",
+      secLog:"Today's log", thFood:"Food", thQty:"Amount", thC:"Carbs", thF:"Fat", thP:"Protein",
+      totalRow:"Total", logEmpty:"Nothing logged for this day yet.",
+      secAdd:"Add to today", lblSearch:"Search food bank", phSearch:"Type to filter…", lblFood:"Food",
+      lblQtyG:"Amount (g)", lblQtyP:"Portions", btnAdd:"Add", btnManual:"✍️ Manual entry", mName:"Name",
+      noFoods:"Food bank is empty — save foods below and they'll appear here.",
+      valErr:"Fill in the name and the numbers first.", qtyErr:"Enter the amount first.", pickErr:"Pick a food first.",
+      secFoods:"Food bank", fName:"Name", fUnit:"Type", unitG:"per 100 g", unitP:"per portion",
+      fLabel:"Portion label", phLabel:"1 egg / 1 slice", fSave:"Save food",
+      kcalPer100:"kcal / 100 g", kcalPerPortion:"kcal / portion",
+      foodEmpty:"No foods saved yet.", perG:"100 g", del:"Delete",
+      delFoodConfirm:"Delete this food from the bank? Logged entries stay unchanged.",
+      footer:"All data is stored locally in your browser (JSON in localStorage)."
+    },
+    es:{
+      pageTitle:"Diario de comidas", navCalc:"Calculadora", navDiary:"Diario", navSnap:"Registro corporal",
+      secDay:"Día y presupuesto", lblDate:"Fecha", lblDayType:"Tipo de día",
+      typeHigh:"Día alto en carbos", typeLow:"Día bajo en carbos", typeBulk:"Día de volumen", typeNT:"Plan diario (sin entreno)",
+      noTargets:"No hay objetivos — abre primero la Calculadora para que publique tu presupuesto diario.",
+      barKcal:"Calorías", barC:"Carbos", barF:"Grasa", barP:"Proteína", left:"restante", over:"exceso",
+      secCheat:"Comidas libres", cheatMonthText:"Comidas libres este mes (máx. 2):",
+      cheatBtn:"🍕 Registrar comida libre", cheatName:"¿Qué fue?", cheatKcal:"kcal estimadas (opcional)",
+      cheatSave:"Registrar", cheatDefault:"Comida libre",
+      cheatOverConfirm:"Ya has usado las 2 comidas libres del mes. ¿Registrar igualmente? Se marcará como exceso.",
+      secLog:"Registro del día", thFood:"Alimento", thQty:"Cantidad", thC:"Carbos", thF:"Grasa", thP:"Proteína",
+      totalRow:"Total", logEmpty:"Nada registrado en este día.",
+      secAdd:"Añadir al día", lblSearch:"Buscar en el banco", phSearch:"Escribe para filtrar…", lblFood:"Alimento",
+      lblQtyG:"Cantidad (g)", lblQtyP:"Porciones", btnAdd:"Añadir", btnManual:"✍️ Entrada manual", mName:"Nombre",
+      noFoods:"El banco está vacío — guarda alimentos abajo y aparecerán aquí.",
+      valErr:"Rellena el nombre y los números.", qtyErr:"Introduce la cantidad.", pickErr:"Elige un alimento.",
+      secFoods:"Banco de alimentos", fName:"Nombre", fUnit:"Tipo", unitG:"por 100 g", unitP:"por porción",
+      fLabel:"Etiqueta de porción", phLabel:"1 huevo / 1 rebanada", fSave:"Guardar alimento",
+      kcalPer100:"kcal / 100 g", kcalPerPortion:"kcal / porción",
+      foodEmpty:"Sin alimentos guardados.", perG:"100 g", del:"Borrar",
+      delFoodConfirm:"¿Borrar este alimento del banco? Las entradas ya registradas no cambian.",
+      footer:"Todos los datos se guardan en tu navegador (JSON en localStorage)."
+    },
+    zh:{
+      pageTitle:"饮食日记", navCalc:"计算器", navDiary:"饮食日记", navSnap:"体重快照",
+      secDay:"日期与额度", lblDate:"日期", lblDayType:"当日类型",
+      typeHigh:"高碳日", typeLow:"低碳日", typeBulk:"增肌日", typeNT:"每日方案（不锻炼）",
+      noTargets:"还没有目标数据——请先打开「计算器」页，它会自动发布你的每日额度。",
+      barKcal:"热量", barC:"碳水", barF:"脂肪", barP:"蛋白", left:"剩余", over:"超出",
+      secCheat:"放纵餐", cheatMonthText:"本月放纵餐（上限 2 次）：",
+      cheatBtn:"🍕 记一餐放纵", cheatName:"吃了什么？", cheatKcal:"估算热量 kcal（可不填）",
+      cheatSave:"记录", cheatDefault:"放纵餐",
+      cheatOverConfirm:"本月 2 次放纵额度已用完。仍要记录吗？将标记为超额。",
+      secLog:"当日记录", thFood:"食物", thQty:"数量", thC:"碳水", thF:"脂肪", thP:"蛋白",
+      totalRow:"合计", logEmpty:"这一天还没有记录。",
+      secAdd:"添加到当日", lblSearch:"搜索食物库", phSearch:"输入名称筛选…", lblFood:"食物",
+      lblQtyG:"数量（克）", lblQtyP:"份数", btnAdd:"添加", btnManual:"✍️ 手动录入", mName:"名称",
+      noFoods:"食物库是空的——在下方保存食物后就会出现在这里。",
+      valErr:"请先填写名称和数值。", qtyErr:"请先填写数量。", pickErr:"请先选择食物。",
+      secFoods:"食物库", fName:"名称", fUnit:"计量方式", unitG:"每 100 克", unitP:"每份",
+      fLabel:"份的说明", phLabel:"1 颗鸡蛋 / 1 片面包", fSave:"保存食物",
+      kcalPer100:"kcal / 100g", kcalPerPortion:"kcal / 每份",
+      foodEmpty:"还没有保存的食物。", perG:"100g", del:"删除",
+      delFoodConfirm:"从食物库删除该食物？已记录的条目不受影响。",
+      footer:"所有数据以 JSON 形式保存在你的浏览器 localStorage 中。"
+    }
+  };
+
+  var lang = FT.getLang();
+  function t(k){ return (I18N[lang]&&I18N[lang][k]) || I18N.en[k] || k; }
+
+  var $ = function(id){ return document.getElementById(id); };
+  var el = {
+    lang:$("langSelect"), date:$("date"), dayType:$("dayType"),
+    noTargets:$("noTargets"), bars:$("bars"),
+    cheatCounter:$("cheatCounter"), cheatText:$("cheatText"), cheatCount:$("cheatCount"),
+    cheatToggle:$("cheatToggle"), cheatForm:$("cheatForm"), cheatDesc:$("cheatDesc"),
+    cheatKcalIn:$("cheatKcalIn"), cheatAdd:$("cheatAdd"),
+    logTable:$("logTable"), logBody:$("logBody"), logEmpty:$("logEmpty"),
+    foodSearch:$("foodSearch"), foodSelect:$("foodSelect"), qty:$("qty"), qtyLabel:$("qtyLabel"),
+    addEntry:$("addEntry"), manualToggle:$("manualToggle"), manualForm:$("manualForm"),
+    mName:$("mName"), mKcal:$("mKcal"), mC:$("mC"), mF:$("mF"), mP:$("mP"), mAdd:$("mAdd"),
+    fName:$("fName"), fUnit:$("fUnit"), fLabelField:$("fLabelField"), fLabel:$("fLabel"),
+    fKcalLabel:$("fKcalLabel"), fKcal:$("fKcal"), fC:$("fC"), fF:$("fF"), fP:$("fP"), fAdd:$("fAdd"),
+    foodTable:$("foodTable"), foodBody:$("foodBody"), foodEmpty:$("foodEmpty")
+  };
+
+  /* ── data access ── */
+  function foods(){ return FT.getJSON(K.foods, []); }
+  function saveFoods(a){ FT.setJSON(K.foods, a); }
+  function diary(){ return FT.getJSON(K.diary, {}); }
+  function saveDiary(d){ FT.setJSON(K.diary, d); }
+  function targets(){ return FT.getJSON(K.targets, null); }
+  function day(dateStr){
+    var d = diary();
+    return d[dateStr] || { dayType:null, entries:[] };
+  }
+  function saveDay(dateStr, obj){
+    var d = diary();
+    d[dateStr] = obj;
+    saveDiary(d);
+  }
+  function num(v){ var n = parseFloat(v); return isFinite(n)? n : null; }
+
+  /* ── i18n ── */
+  function applyI18n(){
+    document.documentElement.lang = lang==="zh"?"zh-CN":lang;
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for(var i=0;i<nodes.length;i++) nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+    var phs = document.querySelectorAll("[data-i18n-ph]");
+    for(var j=0;j<phs.length;j++) phs[j].placeholder = t(phs[j].getAttribute("data-i18n-ph"));
+    el.lang.value = lang;
+    el.cheatText.textContent = t("cheatMonthText");
+    el.fKcalLabel.textContent = el.fUnit.value==="g" ? t("kcalPer100") : t("kcalPerPortion");
+  }
+
+  /* ── day type options from published targets ── */
+  var TYPE_LABELS = { high:"typeHigh", low:"typeLow", bulk:"typeBulk", nt:"typeNT" };
+  function buildDayTypeOptions(current){
+    var tg = targets();
+    var keys = tg && tg.types ? Object.keys(tg.types) : [];
+    el.noTargets.style.display = keys.length ? "none" : "block";
+    el.noTargets.textContent = t("noTargets");
+    if(!keys.length){ el.dayType.innerHTML = ""; return null; }
+    if(current && keys.indexOf(current) < 0) current = null;
+    if(!current) current = keys.indexOf("low")>=0 ? "low" : keys[0];
+    el.dayType.innerHTML = keys.map(function(k){
+      return '<option value="'+k+'"'+(k===current?' selected':'')+'>'+t(TYPE_LABELS[k]||k)+'</option>';
+    }).join("");
+    return current;
+  }
+
+  /* ── budget bars ── */
+  function renderBars(totals, dayTypeKey){
+    var tg = targets();
+    if(!tg || !tg.types || !dayTypeKey || !tg.types[dayTypeKey]){ el.bars.innerHTML=""; return; }
+    var b = tg.types[dayTypeKey];
+    var rows = [
+      {lbl:t("barKcal"), cur:totals.kcal, max:b.kcal, unit:" kcal"},
+      {lbl:t("barC"),    cur:totals.c,    max:b.c,    unit:"g"},
+      {lbl:t("barF"),    cur:totals.f,    max:b.f,    unit:"g"},
+      {lbl:t("barP"),    cur:totals.p,    max:b.p,    unit:"g"}
+    ];
+    el.bars.innerHTML = rows.map(function(x){
+      var pct = x.max>0 ? Math.min(100, x.cur/x.max*100) : 0;
+      var isOver = x.cur > x.max;
+      var diff = Math.abs(x.max - x.cur);
+      var tail = isOver ? (r0(diff)+x.unit+" "+t("over")) : (r0(diff)+x.unit+" "+t("left"));
+      return '<div class="bar-row"><div class="bar-head">'
+        + '<span class="lbl">'+x.lbl+'</span>'
+        + '<span class="num'+(isOver?' over':'')+'">'+r0(x.cur)+' / '+r0(x.max)+x.unit+' · '+tail+'</span>'
+        + '</div><div class="bar"><i class="'+(isOver?'over':'')+'" style="width:'+pct+'%"></i></div></div>';
+    }).join("");
+  }
+
+  /* ── cheat counting (per calendar month) ── */
+  function cheatCountForMonth(dateStr){
+    var prefix = dateStr.slice(0,7); // YYYY-MM
+    var d = diary(), n = 0;
+    for(var k in d){
+      if(k.slice(0,7)!==prefix) continue;
+      var es = d[k].entries || [];
+      for(var i=0;i<es.length;i++) if(es[i].cheat) n++;
+    }
+    return n;
+  }
+
+  /* ── main render ── */
+  function currentDate(){ return el.date.value || FT.today(); }
+
+  function render(){
+    var dateStr = currentDate();
+    var dd = day(dateStr);
+    var chosen = buildDayTypeOptions(dd.dayType);
+    if(chosen && chosen !== dd.dayType){ dd.dayType = chosen; saveDay(dateStr, dd); }
+
+    // log table + totals
+    var totals = {kcal:0,c:0,f:0,p:0};
+    var es = dd.entries || [];
+    if(!es.length){
+      el.logTable.style.display="none";
+      el.logEmpty.style.display="block";
+      el.logEmpty.textContent = t("logEmpty");
+    }else{
+      el.logTable.style.display="table";
+      el.logEmpty.style.display="none";
+      el.logBody.innerHTML = es.map(function(e){
+        totals.kcal+=e.kcal; totals.c+=e.c; totals.f+=e.f; totals.p+=e.p;
+        var qtyTxt = e.cheat ? "—" : (e.unit==="g" ? r0(e.qty)+"g" : r1(e.qty)+" × "+(e.label||"·"));
+        var nameHtml = e.name + (e.cheat ? ' <span class="badge cheat">🍕</span>' : "")
+                     + (e.cheatOver ? ' <span class="badge over">+2</span>' : "");
+        return '<tr class="'+(e.cheat?'cheat-row':'')+'">'
+          + '<td class="name-cell">'+nameHtml+'</td>'
+          + '<td>'+qtyTxt+'</td>'
+          + '<td>'+r0(e.kcal)+'</td><td>'+r1(e.c)+'</td><td>'+r1(e.f)+'</td><td>'+r1(e.p)+'</td>'
+          + '<td><button class="del-btn" data-id="'+e.id+'">✕</button></td></tr>';
+      }).join("")
+      + '<tr class="total-row"><td class="name-cell">'+t("totalRow")+'</td><td></td>'
+      + '<td>'+r0(totals.kcal)+'</td><td>'+r1(totals.c)+'</td><td>'+r1(totals.f)+'</td><td>'+r1(totals.p)+'</td><td></td></tr>';
+    }
+
+    renderBars(totals, dd.dayType);
+
+    // cheat counter
+    var n = cheatCountForMonth(dateStr);
+    el.cheatCount.textContent = n+"/2";
+    el.cheatCounter.classList.toggle("maxed", n>=2);
+
+    renderFoodBank();
+    renderFoodSelect();
+  }
+
+  /* ── food bank rendering ── */
+  function renderFoodBank(){
+    var fs = foods().slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
+    if(!fs.length){
+      el.foodTable.style.display="none";
+      el.foodEmpty.style.display="block";
+      el.foodEmpty.textContent = t("foodEmpty");
+      return;
+    }
+    el.foodTable.style.display="table";
+    el.foodEmpty.style.display="none";
+    el.foodBody.innerHTML = fs.map(function(f){
+      var unitTxt = f.unit==="g" ? t("perG") : (f.label || t("unitP"));
+      return '<tr><td class="name-cell">'+f.name+'</td><td>'+unitTxt+'</td>'
+        + '<td>'+r0(f.kcal)+'</td><td>'+r1(f.c)+'</td><td>'+r1(f.f)+'</td><td>'+r1(f.p)+'</td>'
+        + '<td><button class="del-btn" data-fid="'+f.id+'">'+t("del")+'</button></td></tr>';
+    }).join("");
+  }
+
+  function renderFoodSelect(){
+    var q = (el.foodSearch.value||"").toLowerCase();
+    var fs = foods().filter(function(f){ return f.name.toLowerCase().indexOf(q)>=0; })
+                    .sort(function(a,b){ return a.name.localeCompare(b.name); });
+    if(!foods().length){
+      el.foodSelect.innerHTML = '<option value="">'+t("noFoods")+'</option>';
+      return;
+    }
+    var prev = el.foodSelect.value;
+    el.foodSelect.innerHTML = fs.map(function(f){
+      var tag = f.unit==="g" ? " (100g)" : (f.label? " ("+f.label+")" : "");
+      return '<option value="'+f.id+'">'+f.name+tag+'</option>';
+    }).join("") || '<option value=""></option>';
+    if(prev) el.foodSelect.value = prev;
+    updateQtyLabel();
+  }
+
+  function updateQtyLabel(){
+    var f = foods().find(function(x){ return x.id===el.foodSelect.value; });
+    el.qtyLabel.textContent = (!f || f.unit==="g") ? t("lblQtyG") : t("lblQtyP");
+  }
+
+  /* ── events ── */
+  el.lang.addEventListener("change", function(){
+    lang = el.lang.value; FT.setLang(lang); applyI18n(); render();
+  });
+  el.date.addEventListener("change", render);
+  el.dayType.addEventListener("change", function(){
+    var dateStr = currentDate(), dd = day(dateStr);
+    dd.dayType = el.dayType.value; saveDay(dateStr, dd); render();
+  });
+
+  el.foodSearch.addEventListener("input", renderFoodSelect);
+  el.foodSelect.addEventListener("change", updateQtyLabel);
+
+  el.addEntry.addEventListener("click", function(){
+    var f = foods().find(function(x){ return x.id===el.foodSelect.value; });
+    if(!f){ alert(t("pickErr")); return; }
+    var q = num(el.qty.value);
+    if(q===null || q<=0){ alert(t("qtyErr")); return; }
+    var factor = f.unit==="g" ? q/100 : q;
+    var dateStr = currentDate(), dd = day(dateStr);
+    dd.entries.push({ id:FT.uid(), name:f.name, unit:f.unit, label:f.label||"", qty:q,
+      kcal:f.kcal*factor, c:f.c*factor, f:f.f*factor, p:f.p*factor });
+    saveDay(dateStr, dd);
+    el.qty.value=""; render();
+  });
+
+  el.manualToggle.addEventListener("click", function(){ el.manualForm.classList.toggle("show"); });
+  el.mAdd.addEventListener("click", function(){
+    var name = (el.mName.value||"").trim();
+    var kc = num(el.mKcal.value);
+    if(!name || kc===null){ alert(t("valErr")); return; }
+    var dateStr = currentDate(), dd = day(dateStr);
+    dd.entries.push({ id:FT.uid(), name:name, unit:"manual", qty:1,
+      kcal:kc, c:num(el.mC.value)||0, f:num(el.mF.value)||0, p:num(el.mP.value)||0 });
+    saveDay(dateStr, dd);
+    el.mName.value=el.mKcal.value=el.mC.value=el.mF.value=el.mP.value="";
+    el.manualForm.classList.remove("show");
+    render();
+  });
+
+  el.cheatToggle.addEventListener("click", function(){ el.cheatForm.classList.toggle("show"); });
+  el.cheatAdd.addEventListener("click", function(){
+    var dateStr = currentDate();
+    var n = cheatCountForMonth(dateStr);
+    var over = n >= 2;
+    if(over && !confirm(t("cheatOverConfirm"))) return;
+    var kc = num(el.cheatKcalIn.value) || 0;
+    var name = (el.cheatDesc.value||"").trim() || t("cheatDefault");
+    var dd = day(dateStr);
+    dd.entries.push({ id:FT.uid(), name:name, cheat:true, cheatOver:over, unit:"manual", qty:1,
+      kcal:kc, c:0, f:0, p:0 });
+    saveDay(dateStr, dd);
+    el.cheatDesc.value=""; el.cheatKcalIn.value="";
+    el.cheatForm.classList.remove("show");
+    render();
+  });
+
+  el.logBody.addEventListener("click", function(e){
+    var btn = e.target.closest(".del-btn"); if(!btn) return;
+    var dateStr = currentDate(), dd = day(dateStr);
+    dd.entries = dd.entries.filter(function(x){ return x.id!==btn.getAttribute("data-id"); });
+    saveDay(dateStr, dd); render();
+  });
+
+  el.fUnit.addEventListener("change", function(){
+    el.fLabelField.style.display = el.fUnit.value==="p" ? "" : "none";
+    el.fKcalLabel.textContent = el.fUnit.value==="g" ? t("kcalPer100") : t("kcalPerPortion");
+  });
+  el.fAdd.addEventListener("click", function(){
+    var name = (el.fName.value||"").trim();
+    var kc = num(el.fKcal.value);
+    if(!name || kc===null){ alert(t("valErr")); return; }
+    var fs = foods();
+    fs.push({ id:FT.uid(), name:name, unit:el.fUnit.value,
+      label: el.fUnit.value==="p" ? ((el.fLabel.value||"").trim()) : "",
+      kcal:kc, c:num(el.fC.value)||0, f:num(el.fF.value)||0, p:num(el.fP.value)||0 });
+    saveFoods(fs);
+    el.fName.value=el.fKcal.value=el.fC.value=el.fF.value=el.fP.value=el.fLabel.value="";
+    render();
+  });
+  el.foodBody.addEventListener("click", function(e){
+    var btn = e.target.closest(".del-btn"); if(!btn) return;
+    if(!confirm(t("delFoodConfirm"))) return;
+    saveFoods(foods().filter(function(x){ return x.id!==btn.getAttribute("data-fid"); }));
+    render();
+  });
+
+  /* ── init ── */
+  el.date.value = FT.today();
+  applyI18n();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snapshots</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1 data-i18n="pageTitle">Body snapshots</h1>
+    <select class="lang-select" id="langSelect" aria-label="Language">
+      <option value="en">🌐 English</option>
+      <option value="es">🌐 Español</option>
+      <option value="zh">🌐 中文</option>
+    </select>
+  </header>
+
+  <nav class="site-nav">
+    <a href="index.html" data-i18n="navCalc">Calculator</a>
+    <a href="diario.html" data-i18n="navDiary">Food diary</a>
+    <a href="snapshots.html" class="active" data-i18n="navSnap">Snapshots</a>
+  </nav>
+
+  <!-- Add snapshot -->
+  <section class="card">
+    <h2 data-i18n="secAdd">New snapshot</h2>
+    <div class="grid">
+      <div class="field"><label data-i18n="lblDate">Date</label><input type="date" id="date"></div>
+      <div class="field"><label data-i18n="lblWeight">Weight (kg)</label><input type="number" id="weight" step="0.1" min="30" max="250"></div>
+      <div class="field"><label data-i18n="lblWaist">Waist (cm, optional)</label><input type="number" id="waist" step="0.1" min="40" max="200"></div>
+    </div>
+    <div class="btn-row"><button class="btn" id="addBtn" data-i18n="btnAdd">📸 Save snapshot</button></div>
+  </section>
+
+  <!-- History -->
+  <section class="card">
+    <h2 data-i18n="secHist">History</h2>
+    <div class="table-wrap">
+      <table id="histTable" style="display:none">
+        <thead><tr>
+          <th data-i18n="thDate">Date</th><th data-i18n="thWeight">Weight (kg)</th><th>Δ</th>
+          <th data-i18n="thWaist">Waist (cm)</th><th></th>
+        </tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+      <div class="empty-msg" id="histEmpty"></div>
+    </div>
+    <div class="stats-line" id="statsLine"></div>
+  </section>
+
+  <!-- Backup -->
+  <section class="card">
+    <h2 data-i18n="secBackup">Backup (all site data)</h2>
+    <p class="stats-line" data-i18n="backupHint" style="margin-top:0"></p>
+    <div class="btn-row">
+      <button class="btn secondary" id="expBtn" data-i18n="expBtn">⬇️ Export JSON</button>
+      <button class="btn secondary" id="impBtn" data-i18n="impBtn">⬆️ Import JSON</button>
+      <input type="file" id="impFile" accept="application/json" style="display:none">
+    </div>
+  </section>
+
+  <footer data-i18n="footer"></footer>
+</div>
+
+<script src="app.js"></script>
+<script>
+(function(){
+  "use strict";
+  var K = FT.KEYS, r1 = FT.r1;
+
+  var I18N = {
+    en:{
+      pageTitle:"Body snapshots", navCalc:"Calculator", navDiary:"Food diary", navSnap:"Snapshots",
+      secAdd:"New snapshot", lblDate:"Date", lblWeight:"Weight (kg)", lblWaist:"Waist (cm, optional)",
+      btnAdd:"📸 Save snapshot", valErr:"Date and weight are required.", dupConfirm:"A snapshot for this date exists — replace it?",
+      secHist:"History", thDate:"Date", thWeight:"Weight (kg)", thWaist:"Waist (cm)",
+      histEmpty:"No snapshots yet.",
+      statTotal:"Since first snapshot: {d} kg", statWeek:" · last 4 weeks: {w} kg/week",
+      secBackup:"Backup (all site data)",
+      backupHint:"Exports/imports everything: calculator settings, targets, food bank, diary and snapshots — one JSON file.",
+      expBtn:"⬇️ Export JSON", impBtn:"⬆️ Import JSON",
+      impConfirm:"Importing will OVERWRITE all current data on this device. Continue?",
+      impOk:"Imported. Reloading…", impErr:"Invalid backup file.",
+      footer:"All data is stored locally in your browser (JSON in localStorage)."
+    },
+    es:{
+      pageTitle:"Registro corporal", navCalc:"Calculadora", navDiary:"Diario", navSnap:"Registro corporal",
+      secAdd:"Nueva instantánea", lblDate:"Fecha", lblWeight:"Peso (kg)", lblWaist:"Cintura (cm, opcional)",
+      btnAdd:"📸 Guardar", valErr:"Fecha y peso son obligatorios.", dupConfirm:"Ya existe una instantánea de esa fecha — ¿reemplazarla?",
+      secHist:"Historial", thDate:"Fecha", thWeight:"Peso (kg)", thWaist:"Cintura (cm)",
+      histEmpty:"Sin instantáneas todavía.",
+      statTotal:"Desde la primera: {d} kg", statWeek:" · últimas 4 semanas: {w} kg/semana",
+      secBackup:"Copia de seguridad (todos los datos)",
+      backupHint:"Exporta/importa todo: ajustes de la calculadora, objetivos, banco de alimentos, diario e instantáneas — un solo JSON.",
+      expBtn:"⬇️ Exportar JSON", impBtn:"⬆️ Importar JSON",
+      impConfirm:"Importar SOBRESCRIBIRÁ todos los datos actuales de este dispositivo. ¿Continuar?",
+      impOk:"Importado. Recargando…", impErr:"Archivo no válido.",
+      footer:"Todos los datos se guardan en tu navegador (JSON en localStorage)."
+    },
+    zh:{
+      pageTitle:"体重快照", navCalc:"计算器", navDiary:"饮食日记", navSnap:"体重快照",
+      secAdd:"新快照", lblDate:"日期", lblWeight:"体重 (kg)", lblWaist:"腰围 (cm，可不填)",
+      btnAdd:"📸 保存快照", valErr:"日期和体重必填。", dupConfirm:"该日期已有快照——要覆盖吗？",
+      secHist:"历史记录", thDate:"日期", thWeight:"体重(kg)", thWaist:"腰围(cm)",
+      histEmpty:"还没有快照。",
+      statTotal:"距首条记录：{d} kg", statWeek:" · 近 4 周：{w} kg/周",
+      secBackup:"数据备份（整站数据）",
+      backupHint:"导出/导入全部内容：计算器设置、目标、食物库、饮食日记和快照——一个 JSON 文件搞定。换手机或换网址时用它迁移。",
+      expBtn:"⬇️ 导出 JSON", impBtn:"⬆️ 导入 JSON",
+      impConfirm:"导入将覆盖本设备上的全部现有数据，确定继续？",
+      impOk:"导入成功，即将刷新…", impErr:"备份文件无效。",
+      footer:"所有数据以 JSON 形式保存在你的浏览器 localStorage 中。"
+    }
+  };
+
+  var lang = FT.getLang();
+  function t(k){ return (I18N[lang]&&I18N[lang][k]) || I18N.en[k] || k; }
+  function tf(k,vars){ var s=t(k); for(var x in vars){ s=s.split("{"+x+"}").join(vars[x]); } return s; }
+
+  var $ = function(id){ return document.getElementById(id); };
+  var el = {
+    lang:$("langSelect"), date:$("date"), weight:$("weight"), waist:$("waist"), addBtn:$("addBtn"),
+    histTable:$("histTable"), histBody:$("histBody"), histEmpty:$("histEmpty"), statsLine:$("statsLine"),
+    expBtn:$("expBtn"), impBtn:$("impBtn"), impFile:$("impFile")
+  };
+
+  function hist(){ return FT.getJSON(K.hist, []); }
+  function saveHist(a){ FT.setJSON(K.hist, a); }
+  function num(v){ var n=parseFloat(v); return isFinite(n)? n : null; }
+
+  function applyI18n(){
+    document.documentElement.lang = lang==="zh"?"zh-CN":lang;
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for(var i=0;i<nodes.length;i++) nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+    el.lang.value = lang;
+  }
+
+  function render(){
+    var h = hist().slice().sort(function(a,b){ return a.date<b.date?1:-1; }); // newest first
+    if(!h.length){
+      el.histTable.style.display="none";
+      el.histEmpty.style.display="block";
+      el.histEmpty.textContent = t("histEmpty");
+      el.statsLine.textContent = "";
+      return;
+    }
+    el.histTable.style.display="table";
+    el.histEmpty.style.display="none";
+
+    // delta vs the chronologically previous entry
+    var asc = h.slice().reverse();
+    var deltaByid = {};
+    for(var i=1;i<asc.length;i++){
+      if(asc[i].weight!=null && asc[i-1].weight!=null)
+        deltaByid[asc[i].id] = asc[i].weight - asc[i-1].weight;
+    }
+
+    el.histBody.innerHTML = h.map(function(x){
+      var d = deltaByid[x.id];
+      var dTxt = (d===undefined) ? "—"
+        : '<span class="'+(d>0?'delta-pos':d<0?'delta-neg':'')+'">'+(d>0?"+":"")+r1(d)+'</span>';
+      return '<tr><td>'+x.date+'</td>'
+        + '<td>'+(x.weight!=null? x.weight : "—")+'</td>'
+        + '<td>'+dTxt+'</td>'
+        + '<td>'+(x.waist!=null? x.waist : "—")+'</td>'
+        + '<td><button class="del-btn" data-id="'+x.id+'">✕</button></td></tr>';
+    }).join("");
+
+    // stats: total change + last-4-week weekly rate
+    var first = asc[0], last = asc[asc.length-1];
+    var line = "";
+    if(first.weight!=null && last.weight!=null && asc.length>1){
+      var total = last.weight - first.weight;
+      line = tf("statTotal",{d:(total>0?"+":"")+r1(total)});
+      var cutoff = new Date(last.date); cutoff.setDate(cutoff.getDate()-28);
+      var recent = asc.filter(function(x){ return new Date(x.date) >= cutoff && x.weight!=null; });
+      if(recent.length>1){
+        var span = (new Date(recent[recent.length-1].date) - new Date(recent[0].date)) / 86400000;
+        if(span>=7){
+          var rate = (recent[recent.length-1].weight - recent[0].weight) / span * 7;
+          line += tf("statWeek",{w:(rate>0?"+":"")+r1(rate)});
+        }
+      }
+    }
+    el.statsLine.innerHTML = line;
+  }
+
+  el.lang.addEventListener("change", function(){
+    lang = el.lang.value; FT.setLang(lang); applyI18n(); render();
+  });
+
+  el.addBtn.addEventListener("click", function(){
+    var d = el.date.value, w = num(el.weight.value), wa = num(el.waist.value);
+    if(!d || w===null){ alert(t("valErr")); return; }
+    var h = hist();
+    var existing = h.find(function(x){ return x.date===d; });
+    if(existing){
+      if(!confirm(t("dupConfirm"))) return;
+      h = h.filter(function(x){ return x.date!==d; });
+    }
+    h.unshift({ id:FT.uid(), date:d, weight:w, waist:wa });
+    saveHist(h);
+    el.weight.value=""; el.waist.value="";
+    render();
+  });
+
+  el.histBody.addEventListener("click", function(e){
+    var btn = e.target.closest(".del-btn"); if(!btn) return;
+    saveHist(hist().filter(function(x){ return String(x.id)!==btn.getAttribute("data-id"); }));
+    render();
+  });
+
+  /* ── backup: export/import ALL keys ── */
+  el.expBtn.addEventListener("click", function(){
+    var dump = { app:"fitness-dashboard", version:1, exported:new Date().toISOString(), data:{} };
+    for(var name in K){ dump.data[K[name]] = FT.getJSON(K[name], null); }
+    var blob = new Blob([JSON.stringify(dump, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "fitness-backup-"+FT.today()+".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  el.impBtn.addEventListener("click", function(){ el.impFile.click(); });
+  el.impFile.addEventListener("change", function(){
+    var file = el.impFile.files[0]; if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var dump = JSON.parse(reader.result);
+        if(!dump || !dump.data) throw new Error("bad");
+        if(!confirm(t("impConfirm"))){ el.impFile.value=""; return; }
+        for(var k in dump.data){
+          if(dump.data[k]!==null) FT.setJSON(k, dump.data[k]);
+        }
+        alert(t("impOk"));
+        location.reload();
+      }catch(e){ alert(t("impErr")); }
+      el.impFile.value="";
+    };
+    reader.readAsText(file);
+  });
+
+  /* ── init ── */
+  el.date.value = FT.today();
+  applyI18n();
+  render();
+})();
+</script>
+</body>
+</html>

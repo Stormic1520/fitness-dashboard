@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dynamic Fitness Calorie Dashboard</title>
+<style>
+  :root{
+    --bg:#0e1116;
+    --panel:#161b23;
+    --panel-2:#1c2330;
+    --line:#28303d;
+    --text:#e8edf4;
+    --muted:#8b96a5;
+    --warn-bg:#3a2a12;
+    --warn-border:#c98a2e;
+    --warn-text:#f3c069;
+    --info-bg:#12303a;
+    --info-border:#2e9ac9;
+    --info-text:#7fd0f3;
+    --ok-bg:#12341f;
+    --ok-border:#3aa864;
+    --ok-text:#8fe0ae;
+    --radius:14px;
+  }
+  body.mode-cut{
+    --accent:#3fa9f5;
+    --accent-soft:rgba(63,169,245,.14);
+  }
+  body.mode-bulk{
+    --accent:#ff9040;
+    --accent-soft:rgba(255,144,64,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    line-height:1.55;
+    padding:20px 14px 90px;
+  }
+  .wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+  header{
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+    padding:18px 20px;background:linear-gradient(135deg,var(--panel),var(--accent-soft));
+    border:1px solid var(--line);border-radius:var(--radius);
+  }
+  header h1{font-size:1.2rem;font-weight:700;letter-spacing:.3px}
+  header h1 span{color:var(--accent)}
+  .header-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .mode-toggle{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .mode-toggle button{
+    border:none;background:transparent;color:var(--muted);
+    padding:9px 20px;font-size:.92rem;cursor:pointer;font-family:inherit;transition:all .2s;
+  }
+  .mode-toggle button.active{background:var(--accent);color:#0b0e12;font-weight:700}
+  .mode-toggle button:disabled{opacity:.35;cursor:not-allowed}
+  .lang-select{
+    padding:8px 10px;border-radius:999px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.88rem;outline:none;cursor:pointer;
+  }
+  .site-nav{display:flex;gap:8px}
+  .site-nav a{
+    flex:1;text-align:center;padding:11px 6px;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;color:var(--muted);
+    text-decoration:none;font-size:.9rem;
+  }
+  .site-nav a.active{color:var(--accent);border-color:var(--accent);font-weight:700;background:var(--accent-soft)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+  .card h2{font-size:.85rem;font-weight:600;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px}
+  .purpose{font-size:.82rem;color:var(--muted);margin-bottom:14px;border-left:3px solid var(--accent);padding-left:8px;font-style:italic}
+
+  .grid-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+  .field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px}
+  .field input,.field select{
+    width:100%;padding:10px 12px;font-size:1rem;font-family:inherit;
+    background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:10px;outline:none;
+  }
+  .field input:focus,.field select:focus{border-color:var(--accent)}
+  .field-wide{grid-column:span 2}
+  @media (max-width:480px){ .field-wide{grid-column:span 1} }
+
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .metric{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center}
+  .metric .label{font-size:.78rem;color:var(--muted)}
+  .metric .value{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .metric .unit{font-size:.75rem;color:var(--muted)}
+
+  .offset-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .offset-row input[type=range]{flex:1;min-width:170px;accent-color:var(--accent);height:6px}
+  .stepper button{
+    width:46px;height:38px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--text);font-size:1rem;cursor:pointer;font-family:inherit;
+  }
+  .stepper button:active{background:var(--accent);color:#0b0e12}
+  .offset-value{font-size:1.15rem;font-weight:700;min-width:105px;text-align:center;color:var(--accent);font-variant-numeric:tabular-nums}
+  .intake-line{
+    margin-top:14px;text-align:center;padding:14px;border-radius:10px;
+    background:var(--accent-soft);border:1px dashed var(--accent);font-size:1rem;
+  }
+  .intake-line b{font-size:1.6rem;color:var(--accent);font-variant-numeric:tabular-nums}
+
+  .result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .day-card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:16px;position:relative;overflow:hidden}
+  .day-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+  .day-card h3{font-size:1rem;margin-bottom:10px}
+  .day-card .kcal{font-size:1.7rem;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+  .day-card .kcal small{font-size:.8rem;color:var(--muted);font-weight:400}
+  .macros{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .macro{flex:1;min-width:64px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center}
+  .macro .n{font-size:1.05rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .macro .t{font-size:.7rem;color:var(--muted)}
+  .avg-line{margin-top:12px;font-size:.9rem;color:var(--muted);text-align:center}
+  .avg-line b{color:var(--text)}
+
+  .alert{display:none;padding:12px 14px;border-radius:10px;font-size:.9rem;margin-top:10px}
+  .alert.show{display:block}
+  .alert.warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text)}
+  .alert.info{background:var(--info-bg);border:1px solid var(--info-border);color:var(--info-text)}
+
+  .goal-result{
+    margin-top:14px;padding:14px;border-radius:10px;font-size:.95rem;
+    background:var(--ok-bg);border:1px solid var(--ok-border);color:var(--ok-text);
+  }
+  .goal-result b{font-variant-numeric:tabular-nums}
+  .goal-result.neutral{background:var(--panel-2);border-color:var(--line);color:var(--muted)}
+  .goal-note{font-size:.78rem;margin-top:6px;opacity:.85}
+  .goal-warn{
+    margin-top:8px;padding:10px 12px;border-radius:8px;font-size:.85rem;
+    background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);
+  }
+  .goal-danger{
+    margin-top:8px;padding:10px 12px;border-radius:8px;font-size:.85rem;
+    background:#3a1515;border:1px solid #c94b4b;color:#f0a0a0;
+  }
+
+  .bmi-line{
+    margin-top:14px;padding:11px 14px;border-radius:10px;font-size:.92rem;
+    border:1px solid var(--line);background:var(--panel-2);
+  }
+  .bmi-line b{font-variant-numeric:tabular-nums}
+  .bmi-cat{font-weight:700}
+  .bmi-under .bmi-cat{color:#7fd0f3}
+  .bmi-ok .bmi-cat{color:#8fe0ae}
+  .bmi-over .bmi-cat{color:#f3c069}
+  .bmi-obese .bmi-cat{color:#f08a8a}
+  .bmi-minor{font-size:.78rem;color:var(--muted);margin-top:5px}
+
+  .rule-card{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:.92rem}
+  .rule-card + .rule-card{margin-top:10px}
+  .rule-card .head{font-weight:700;color:var(--accent);margin-bottom:6px}
+  .rule-card ul{padding-left:1.2em;color:var(--muted)}
+  .rule-card li{margin:4px 0}
+  .rule-card li b{color:var(--text)}
+
+  .snap-btn{
+    width:100%;padding:13px;border:none;border-radius:10px;cursor:pointer;
+    background:var(--accent);color:#0b0e12;font-size:1rem;font-weight:700;font-family:inherit;
+    margin-bottom:14px;transition:filter .15s;
+  }
+  .snap-btn:active{filter:brightness(.85)}
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;min-width:520px}
+  th,td{padding:9px 8px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:.78rem}
+  td{font-variant-numeric:tabular-nums}
+  .del-btn{border:none;background:transparent;color:#e06060;cursor:pointer;font-size:.85rem;font-family:inherit;padding:4px 8px}
+  .empty-msg{color:var(--muted);text-align:center;padding:14px 0;font-size:.9rem}
+  .mode-tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem}
+  .tag-cut{background:rgba(63,169,245,.16);color:#7cc4f5}
+  .tag-bulk{background:rgba(255,144,64,.16);color:#ffb27a}
+
+  footer{
+    position:fixed;left:0;right:0;bottom:0;
+    background:rgba(14,17,22,.92);backdrop-filter:blur(6px);
+    border-top:1px solid var(--line);
+    text-align:center;padding:11px 16px;font-size:.78rem;color:var(--muted);
+  }
+
+  @media (max-width:560px){
+    header h1{font-size:1rem}
+    body{padding:12px 10px 84px}
+    .card{padding:15px 14px}
+  }
+</style>
+</head>
+<body class="mode-cut">
+<div class="wrap">
+
+  <!-- ── Header ── -->
+  <header>
+    <h1><span data-i18n="appTitle">Dynamic Calorie Dashboard</span> <span id="modeTitle"></span></h1>
+    <div class="header-controls">
+      <select class="lang-select" id="langSelect" aria-label="Language">
+        <option value="en">🌐 English</option>
+        <option value="es">🌐 Español</option>
+        <option value="zh">🌐 中文</option>
+      </select>
+      <div class="mode-toggle">
+        <button id="btnCut" class="active" data-i18n="btnCut">Cut</button>
+        <button id="btnBulk" data-i18n="btnBulk">Bulk</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="site-nav">
+    <a href="index.html" class="active" data-i18n="navCalc">Calculator</a>
+    <a href="diario.html" data-i18n="navDiary">Food diary</a>
+    <a href="snapshots.html" data-i18n="navSnap">Snapshots</a>
+  </nav>
+
+  <!-- ── Personal info ── -->
+  <section class="card">
+    <h2 data-i18n="secPersonal">Personal info</h2>
+    <p class="purpose" data-i18n="personalPurpose"></p>
+    <div class="grid-inputs">
+      <div class="field"><label data-i18n="lblWeight">Weight (kg)</label><input type="number" id="weight" step="0.1" min="30" max="250"></div>
+      <div class="field"><label data-i18n="lblWaist">Waist (cm)</label><input type="number" id="waist" step="0.1" min="40" max="200"></div>
+      <div class="field"><label data-i18n="lblHeight">Height (cm)</label><input type="number" id="height" step="0.1" min="120" max="230"></div>
+      <div class="field"><label data-i18n="lblAge">Age</label><input type="number" id="age" step="1" min="14" max="100"></div>
+      <div class="field"><label data-i18n="lblSex">Sex</label>
+        <select id="sex">
+          <option value="m" data-i18n="optMale">Male</option>
+          <option value="f" data-i18n="optFemale">Female</option>
+        </select>
+      </div>
+      <div class="field"><label data-i18n="lblTraining">Exercise</label>
+        <select id="training">
+          <option value="yes" data-i18n="optTrainYes">Yes — I train</option>
+          <option value="no" data-i18n="optTrainNo">No — sedentary</option>
+        </select>
+      </div>
+      <div class="field field-wide" id="activityField"><label data-i18n="lblActivity">Activity factor</label>
+        <select id="activity">
+          <option value="1.2"   data-i18n="act12"></option>
+          <option value="1.375" data-i18n="act1375"></option>
+          <option value="1.55"  data-i18n="act155" selected></option>
+          <option value="1.725" data-i18n="act1725"></option>
+          <option value="1.9"   data-i18n="act19"></option>
+        </select>
+      </div>
+    </div>
+    <div class="bmi-line" id="bmiLine" style="display:none"></div>
+  </section>
+
+  <!-- ── BMR / TDEE / offset ── -->
+  <section class="card">
+    <h2 data-i18n="secMetab">Metabolism & calorie offset</h2>
+    <p class="purpose" data-i18n="metabPurpose"></p>
+    <div class="alert info" id="noTrainInfo" style="margin-top:0;margin-bottom:14px"></div>
+    <div class="metrics">
+      <div class="metric"><div class="label" data-i18n="bmrLabel">BMR</div><div class="value" id="bmrVal">—</div><div class="unit" data-i18n="kcalDay">kcal / day</div></div>
+      <div class="metric"><div class="label" data-i18n="tdeeLabel">TDEE</div><div class="value" id="tdeeVal">—</div><div class="unit" data-i18n="kcalDay">kcal / day</div></div>
+    </div>
+    <div class="offset-row">
+      <div class="stepper"><button id="minus50">−50</button></div>
+      <input type="range" id="offset" step="50">
+      <div class="stepper"><button id="plus50">＋50</button></div>
+      <div class="offset-value" id="offsetVal"></div>
+    </div>
+    <div class="intake-line" id="intakeLine"></div>
+    <div class="alert warn" id="alertBmr"></div>
+    <div class="alert warn" id="alertNearTdee"></div>
+    <div class="alert info" id="alertLowCarb"></div>
+  </section>
+
+  <!-- ── Macro results ── -->
+  <section class="card">
+    <h2 id="resultTitle"></h2>
+    <p class="purpose" data-i18n="resultsPurpose"></p>
+    <div class="result-grid" id="resultGrid"></div>
+    <div class="avg-line" id="avgLine"></div>
+  </section>
+
+  <!-- ── Goal (optional) ── -->
+  <section class="card">
+    <h2 data-i18n="secGoal">Goal (optional)</h2>
+    <p class="purpose" data-i18n="goalPurpose"></p>
+    <div class="grid-inputs">
+      <div class="field"><label data-i18n="lblGoalType">Goal type</label>
+        <select id="goalType"></select>
+      </div>
+      <div class="field"><label id="goalTargetLabel" data-i18n="lblGoalTarget">Target value</label>
+        <input type="number" id="goalTarget" step="0.1" min="0">
+      </div>
+      <div class="field" id="bfNowField" style="display:none">
+        <label data-i18n="lblCurrentBF">Current body fat (%)</label>
+        <input type="number" id="currentBF" step="0.1" min="3" max="60">
+      </div>
+    </div>
+    <div class="goal-result neutral" id="goalResult"></div>
+  </section>
+
+  <!-- ── Rules ── -->
+  <section class="card">
+    <h2 data-i18n="secRules">Smart adjustment rules</h2>
+    <p class="purpose" data-i18n="rulesPurpose"></p>
+    <div id="ruleArea"></div>
+  </section>
+
+  <!-- ── History ── -->
+  <section class="card">
+    <h2 data-i18n="secHist">History & waist tracking</h2>
+    <p class="purpose" data-i18n="histPurpose"></p>
+    <button class="snap-btn" id="snapBtn"></button>
+    <div class="table-wrap">
+      <table id="histTable" style="display:none">
+        <thead><tr>
+          <th data-i18n="thDate">Date</th><th data-i18n="thWeight">Weight (kg)</th><th data-i18n="thWaist">Waist (cm)</th>
+          <th data-i18n="thMode">Mode</th><th data-i18n="thIntake">Daily kcal</th><th data-i18n="thAction">Action</th>
+        </tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+      <div class="empty-msg" id="histEmpty"></div>
+    </div>
+  </section>
+
+</div>
+
+<footer data-i18n="footer"></footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ═════════ i18n dictionaries ═════════ */
+  var I18N = {
+    en: {
+      appTitle:"Dynamic Calorie Dashboard",
+      navCalc:"Calculator", navDiary:"Food diary", navSnap:"Snapshots",
+      modeCut:"· Cutting", modeBulk:"· Bulking",
+      btnCut:"Cut", btnBulk:"Bulk",
+      secPersonal:"Personal info (re-adjust when weight changes ±2 kg)",
+      personalPurpose:"Purpose: these values compute your BMR and TDEE, which drive every number below. In practice, only re-tune your plan once your weight has actually moved ±2 kg.",
+      lblWeight:"Weight (kg)", lblWaist:"Waist (cm)", lblHeight:"Height (cm)", lblAge:"Age",
+      lblSex:"Sex", optMale:"Male", optFemale:"Female", lblActivity:"Activity factor",
+      act12:"1.2 — Sedentary (little or no exercise)",
+      act1375:"1.375 — Light (exercise 1–3 days/week)",
+      act155:"1.55 — Moderate (exercise 3–5 days/week)",
+      act1725:"1.725 — Active (exercise 6–7 days/week)",
+      act19:"1.9 — Very active (hard daily exercise or physical job)",
+      secMetab:"Metabolism & calorie offset",
+      metabPurpose:"Purpose: shows how much you burn (BMR/TDEE) and lets you set the deficit or surplus that all macros are back-calculated from.",
+      bmrLabel:"BMR (at rest)", tdeeLabel:"TDEE (total burn)", kcalDay:"kcal / day",
+      intakeLabel:"Recommended daily intake",
+      alertBmr:"⚠️ Intake is below your BMR. Long term this can affect hormone levels — raise calories or cut more slowly.",
+      alertNearTdee:"⚠️ Intake is at or above TDEE − 100. Fat loss will likely stall — check the offset.",
+      alertLowCarb:"💡 Carbs under 150 g may hurt training pump and recovery — check the offset.",
+      resultTitleCut:"Cutting macros (carbs back-calculated · 3 train / 1 rest)",
+      resultTitleBulk:"Bulking macros (carbs back-calculated)",
+      resultsPurpose:"Purpose: converts your intake target into daily gram targets. Protein and fat scale live with your body weight; carbs absorb whatever calories remain.",
+      lblTraining:"Exercise",
+      optTrainYes:"Yes — I train",
+      optTrainNo:"No — sedentary",
+      tdeeLabelNT:"TDEE (BMR × 1.2 sedentary)",
+      noTrainInfo:"💡 No-training mode: maintenance = BMR × 1.2 (standard sedentary factor). Protein 1.6 g/kg and fat 0.8 g/kg — the usual guidance for dieting without training. Bulking is locked: a surplus without training mostly gains fat.",
+      resultTitleCutNT:"Cutting macros (no training · one daily plan)",
+      noTrainDay:"🥗 Daily plan (no training)",
+      highDay:"🦵 High-carb day (leg day ×1)", lowDay:"🔻 Low-carb day (×3)", bulkDay:"💪 Every day",
+      carbs:"Carbs", fat:"Fat", protein:"Protein",
+      avgLine:"4-day average: <b>{kcal} kcal</b> (avg carbs {c} g · high-carb ≈ 1.8× low-carb)",
+      emptyResults:"Fill in weight, height and age to generate macros.",
+      secGoal:"Goal (optional)",
+      goalPurpose:"Purpose: estimates how long reaching a target will take at your current deficit/surplus. Cutting: weight, waist or body fat. Bulking: weight.",
+      lblGoalType:"Goal type", lblGoalTarget:"Target value", lblCurrentBF:"Current body fat (%)",
+      goalWeight:"Target weight (kg)", goalWaist:"Target waist (cm)", goalBF:"Target body fat (%)",
+      goalHint:"Optional — enter a target above to see a time estimate.",
+      goalNeedData:"Fill in your personal info first so TDEE can be calculated.",
+      goalNeedBF:"Enter your current body fat % to estimate.",
+      goalReached:"🎉 You are already at or past this target.",
+      goalCut:"You need to lose about <b>{kg} kg</b>. At a <b>{off} kcal/day</b> deficit that's roughly <b>{weeks} weeks</b> (around <b>{date}</b>).",
+      goalBulk:"You need to gain about <b>{kg} kg</b>. At a <b>{off} kcal/day</b> surplus that's roughly <b>{weeks} weeks</b> (around <b>{date}</b>).",
+      waistNote:"Rule of thumb used: ~1 cm of waist ≈ ~1 kg of fat. Very approximate.",
+      bfNote:"Assumes lean mass stays constant while cutting.",
+      bulkNote:"Real muscle gain is slower than the scale — expect part of it to be water/glycogen.",
+      secRules:"Smart adjustment rules",
+      rulesPurpose:"Purpose: tells you how to move the offset slider based on real weekly scale feedback, instead of trusting formulas blindly.",
+      deficitHead:"📉 Current deficit: {d} kcal/day",
+      cutEst:"Expected weekly loss ≈ <b>{lo} – {hi} kg</b> (estimated from the deficit; judge by weekly averages).",
+      surplusHead:"📈 Current surplus: {s} kcal/day",
+      bulkEst:"Expected weekly gain ≈ <b>{lo} – {hi} kg</b> (target range 0.25–0.5 kg/week).",
+      sliderRules:"🎛️ Slider rules",
+      cutRule1:"Losing <b>&lt; 0.3 kg/week</b> → move slider left (add 100–150 kcal to the deficit)",
+      cutRule2:"Losing <b>&gt; 0.8 kg/week</b> → move slider right (reduce the deficit by 100–200 kcal)",
+      bulkRule1:"Gaining <b>&gt; 0.5 kg/week</b> for 2 weeks → move slider left (less surplus)",
+      bulkRule2:"Gaining <b>&lt; 0.25 kg/week</b> for 2 weeks → move slider right (more surplus)",
+      rulesEmpty:"Fill in your info to generate rules.",
+      secHist:"History & waist tracking",
+      histPurpose:"Purpose: weekly snapshots are your real feedback loop — adjust the slider from this table, not from the formula.",
+      snapBtn:"📸 Save today's snapshot",
+      thDate:"Date", thWeight:"Weight (kg)", thWaist:"Waist (cm)", thMode:"Mode", thIntake:"Daily kcal", thAction:"Action",
+      del:"Delete",
+      histEmpty:"No records yet — enter your data and save your first snapshot.",
+      snapAlert:"Fill in weight, height and age first.",
+      tagCut:"Cut", tagBulk:"Bulk",
+      bmiLine:"BMI: <b>{v}</b> — <span class='bmi-cat'>{cat}</span>",
+      bmiUnder:"Underweight (< 18.5)",
+      bmiOk:"Healthy weight (18.5 – 24.9)",
+      bmiOver:"Overweight (25 – 29.9)",
+      bmiObese:"Obese (≥ 30)",
+      bmiMinorNote:"Under 18: adult BMI categories don't fully apply — growth-chart percentiles are the right reference.",
+      warnBFLow:"⚠️ That target body fat is very low — not recommended for beginners. Energy, recovery and hormones usually suffer at this level.",
+      warnBFDanger:"🚫 That target is below essential body fat and unsafe for anyone. Pick a higher number — no estimate shown.",
+      warnTargetLow:"⚠️ That target weight would put you below the healthy BMI range (BMI {bmi}). Consider a higher target.",
+      warnTargetHigh:"⚠️ That target weight lands at BMI {bmi} — well into overweight territory. If the goal is muscle, a slower, leaner bulk usually works better.",
+      warnWaistAggressive:"⚠️ That's more than a 20% waist reduction — very ambitious. Consider intermediate milestones.",
+      footer:"All calories are estimates — trust your weekly weight and waist measurements."
+    },
+
+    es: {
+      appTitle:"Panel dinámico de calorías",
+      navCalc:"Calculadora", navDiary:"Diario", navSnap:"Registro corporal",
+      modeCut:"· Definición", modeBulk:"· Volumen",
+      btnCut:"Definición", btnBulk:"Volumen",
+      secPersonal:"Datos personales (reajusta cuando el peso varíe ±2 kg)",
+      personalPurpose:"Objetivo: estos valores calculan tu BMR y TDEE, que determinan todas las cifras de abajo. En la práctica, reajusta el plan solo cuando tu peso haya cambiado ±2 kg.",
+      lblWeight:"Peso (kg)", lblWaist:"Cintura (cm)", lblHeight:"Altura (cm)", lblAge:"Edad",
+      lblSex:"Sexo", optMale:"Hombre", optFemale:"Mujer", lblActivity:"Factor de actividad",
+      act12:"1.2 — Sedentario (poco o nada de ejercicio)",
+      act1375:"1.375 — Ligero (ejercicio 1–3 días/semana)",
+      act155:"1.55 — Moderado (ejercicio 3–5 días/semana)",
+      act1725:"1.725 — Activo (ejercicio 6–7 días/semana)",
+      act19:"1.9 — Muy activo (ejercicio intenso diario o trabajo físico)",
+      secMetab:"Metabolismo y ajuste calórico",
+      metabPurpose:"Objetivo: muestra cuánto gastas (BMR/TDEE) y te deja fijar el déficit o superávit del que se retro-calculan todos los macros.",
+      bmrLabel:"BMR (reposo)", tdeeLabel:"TDEE (gasto total)", kcalDay:"kcal / día",
+      intakeLabel:"Ingesta diaria recomendada",
+      alertBmr:"⚠️ La ingesta está por debajo de tu BMR. A largo plazo puede afectar a las hormonas — sube calorías o define más despacio.",
+      alertNearTdee:"⚠️ La ingesta está en o por encima de TDEE − 100. La pérdida de grasa se estancará — revisa el ajuste.",
+      alertLowCarb:"💡 Menos de 150 g de carbohidratos puede afectar la congestión y la recuperación — revisa el ajuste.",
+      resultTitleCut:"Macros de definición (carbos retro-calculados · 3 entrenos / 1 descanso)",
+      resultTitleBulk:"Macros de volumen (carbos retro-calculados)",
+      resultsPurpose:"Objetivo: convierte tu ingesta objetivo en gramos diarios. Proteína y grasa se calculan en vivo según tu peso corporal; los carbohidratos absorben las calorías restantes.",
+      lblTraining:"Ejercicio",
+      optTrainYes:"Sí — entreno",
+      optTrainNo:"No — sedentario",
+      tdeeLabelNT:"TDEE (BMR × 1,2 sedentario)",
+      noTrainInfo:"💡 Modo sin entrenamiento: mantenimiento = BMR × 1,2 (factor sedentario estándar). Proteína 1,6 g/kg y grasa 0,8 g/kg — la pauta habitual para definir sin entrenar. El volumen queda bloqueado: un superávit sin entrenar gana sobre todo grasa.",
+      resultTitleCutNT:"Macros de definición (sin entrenamiento · plan diario único)",
+      noTrainDay:"🥗 Plan diario (sin entrenamiento)",
+      highDay:"🦵 Día alto en carbos (pierna ×1)", lowDay:"🔻 Día bajo en carbos (×3)", bulkDay:"💪 Cada día",
+      carbs:"Carbos", fat:"Grasa", protein:"Proteína",
+      avgLine:"Media de 4 días: <b>{kcal} kcal</b> (carbos medios {c} g · día alto ≈ 1,8× día bajo)",
+      emptyResults:"Introduce peso, altura y edad para generar los macros.",
+      secGoal:"Objetivo (opcional)",
+      goalPurpose:"Objetivo: estima cuánto tardarás en llegar a una meta con tu déficit/superávit actual. Definición: peso, cintura o grasa corporal. Volumen: peso.",
+      lblGoalType:"Tipo de objetivo", lblGoalTarget:"Valor objetivo", lblCurrentBF:"Grasa corporal actual (%)",
+      goalWeight:"Peso objetivo (kg)", goalWaist:"Cintura objetivo (cm)", goalBF:"Grasa corporal objetivo (%)",
+      goalHint:"Opcional — introduce una meta arriba para ver una estimación de tiempo.",
+      goalNeedData:"Rellena primero tus datos personales para poder calcular el TDEE.",
+      goalNeedBF:"Introduce tu % de grasa corporal actual para estimar.",
+      goalReached:"🎉 Ya estás en esa meta o la has superado.",
+      goalCut:"Necesitas perder unos <b>{kg} kg</b>. Con un déficit de <b>{off} kcal/día</b> serían unas <b>{weeks} semanas</b> (hacia el <b>{date}</b>).",
+      goalBulk:"Necesitas ganar unos <b>{kg} kg</b>. Con un superávit de <b>{off} kcal/día</b> serían unas <b>{weeks} semanas</b> (hacia el <b>{date}</b>).",
+      waistNote:"Regla aproximada: ~1 cm de cintura ≈ ~1 kg de grasa. Muy orientativo.",
+      bfNote:"Se asume que la masa magra se mantiene durante la definición.",
+      bulkNote:"La ganancia muscular real es más lenta que la báscula — parte será agua/glucógeno.",
+      secRules:"Reglas de ajuste inteligente",
+      rulesPurpose:"Objetivo: te dice cómo mover el deslizador según la báscula semanal real, en vez de fiarte a ciegas de las fórmulas.",
+      deficitHead:"📉 Déficit actual: {d} kcal/día",
+      cutEst:"Pérdida semanal esperada ≈ <b>{lo} – {hi} kg</b> (estimada por el déficit; valora medias semanales).",
+      surplusHead:"📈 Superávit actual: {s} kcal/día",
+      bulkEst:"Ganancia semanal esperada ≈ <b>{lo} – {hi} kg</b> (rango objetivo 0,25–0,5 kg/semana).",
+      sliderRules:"🎛️ Reglas del deslizador",
+      cutRule1:"Pierdes <b>&lt; 0,3 kg/semana</b> → mueve a la izquierda (añade 100–150 kcal al déficit)",
+      cutRule2:"Pierdes <b>&gt; 0,8 kg/semana</b> → mueve a la derecha (reduce el déficit 100–200 kcal)",
+      bulkRule1:"Ganas <b>&gt; 0,5 kg/semana</b> durante 2 semanas → mueve a la izquierda (menos superávit)",
+      bulkRule2:"Ganas <b>&lt; 0,25 kg/semana</b> durante 2 semanas → mueve a la derecha (más superávit)",
+      rulesEmpty:"Rellena tus datos para generar las reglas.",
+      secHist:"Historial y seguimiento de cintura",
+      histPurpose:"Objetivo: las instantáneas semanales son tu verdadero feedback — ajusta el deslizador según esta tabla, no según la fórmula.",
+      snapBtn:"📸 Guardar instantánea de hoy",
+      thDate:"Fecha", thWeight:"Peso (kg)", thWaist:"Cintura (cm)", thMode:"Modo", thIntake:"kcal diarias", thAction:"Acción",
+      del:"Borrar",
+      histEmpty:"Sin registros — introduce tus datos y guarda tu primera instantánea.",
+      snapAlert:"Rellena primero peso, altura y edad.",
+      tagCut:"Def.", tagBulk:"Vol.",
+      bmiLine:"IMC: <b>{v}</b> — <span class='bmi-cat'>{cat}</span>",
+      bmiUnder:"Bajo peso (< 18,5)",
+      bmiOk:"Peso saludable (18,5 – 24,9)",
+      bmiOver:"Sobrepeso (25 – 29,9)",
+      bmiObese:"Obesidad (≥ 30)",
+      bmiMinorNote:"Menor de 18 años: las categorías de IMC para adultos no aplican del todo — la referencia correcta son los percentiles de crecimiento.",
+      warnBFLow:"⚠️ Ese % de grasa objetivo es muy bajo — no recomendado para principiantes. A ese nivel suelen resentirse la energía, la recuperación y las hormonas.",
+      warnBFDanger:"🚫 Ese objetivo está por debajo de la grasa esencial y no es seguro para nadie. Elige un valor mayor — no se muestra estimación.",
+      warnTargetLow:"⚠️ Ese peso objetivo te dejaría por debajo del rango saludable de IMC (IMC {bmi}). Plantéate un objetivo mayor.",
+      warnTargetHigh:"⚠️ Ese peso objetivo da un IMC de {bmi} — claramente en sobrepeso. Si el objetivo es músculo, un volumen más lento y limpio suele funcionar mejor.",
+      warnWaistAggressive:"⚠️ Es más de un 20% de reducción de cintura — muy ambicioso. Plantéate metas intermedias.",
+      footer:"Todas las calorías son estimaciones — fíate de tu peso y cintura semanales."
+    },
+
+    zh: {
+      appTitle:"全动态热量仪表盘",
+      navCalc:"计算器", navDiary:"饮食日记", navSnap:"体重快照",
+      modeCut:"· 减脂期", modeBulk:"· 增肌期",
+      btnCut:"减脂", btnBulk:"增肌",
+      secPersonal:"个人信息（体重变动 ±2kg 再重新调整）",
+      personalPurpose:"目的：这些数据用于计算 BMR 和 TDEE，是下方所有数值的基础。实际操作中，体重真正变动 ±2kg 后再重新调整方案即可。",
+      lblWeight:"当前体重 (kg)", lblWaist:"腰围 (cm)", lblHeight:"身高 (cm)", lblAge:"年龄 (岁)",
+      lblSex:"性别", optMale:"男性", optFemale:"女性", lblActivity:"活动系数",
+      act12:"1.2 — 久坐（几乎不运动）",
+      act1375:"1.375 — 轻度（每周运动 1–3 天）",
+      act155:"1.55 — 中度（每周运动 3–5 天）",
+      act1725:"1.725 — 高度（每周运动 6–7 天）",
+      act19:"1.9 — 极高（每天高强度训练或体力工作）",
+      secMetab:"代谢与热量偏移",
+      metabPurpose:"目的：显示你的消耗（BMR/TDEE），并设置热量缺口/盈余——所有营养素都由它反推。",
+      bmrLabel:"BMR 基础代谢", tdeeLabel:"TDEE 总消耗", kcalDay:"kcal / 天",
+      intakeLabel:"推荐日均摄入",
+      alertBmr:"⚠️ 摄入低于基础代谢，长期可能影响激素水平，建议提高热量或放慢减脂速度。",
+      alertNearTdee:"⚠️ 当前摄入接近或高于消耗，减脂效果可能不佳，请检查偏移量设置。",
+      alertLowCarb:"💡 碳水低于 150g 可能影响训练泵感和恢复，建议检查偏移量。",
+      resultTitleCut:"减脂期营养分配（碳水由 TDEE 反推 · 练三休一）",
+      resultTitleBulk:"增肌期营养分配（碳水由 TDEE 反推）",
+      resultsPurpose:"目的：把摄入目标换算成每日克数。蛋白和脂肪按体重实时计算，碳水吸收剩余热量。",
+      lblTraining:"是否锻炼",
+      optTrainYes:"锻炼",
+      optTrainNo:"不锻炼",
+      tdeeLabelNT:"TDEE（BMR × 1.2 久坐）",
+      noTrainInfo:"💡 不锻炼模式：维持热量 = BMR × 1.2（标准久坐系数）。蛋白 1.6 g/kg、脂肪 0.8 g/kg——不训练减脂的通行标准。增肌已锁定：不训练时的热量盈余基本只会长脂肪。",
+      resultTitleCutNT:"减脂期营养分配（不锻炼 · 每日统一方案）",
+      noTrainDay:"🥗 每日方案（不锻炼）",
+      highDay:"🦵 高碳日（练腿日 ×1）", lowDay:"🔻 低碳日（其余 ×3）", bulkDay:"💪 每日统一方案",
+      carbs:"碳水", fat:"脂肪", protein:"蛋白",
+      avgLine:"4 天平均每日热量：<b>{kcal} kcal</b>（平均碳水 {c}g · 高碳约为低碳 1.8 倍）",
+      emptyResults:"填写体重、身高、年龄后自动生成营养分配。",
+      secGoal:"目标（可选）",
+      goalPurpose:"目的：按当前缺口/盈余估算达到目标所需时间。减脂可选体重 / 腰围 / 体脂，增肌只有体重。",
+      lblGoalType:"目标类型", lblGoalTarget:"目标数值", lblCurrentBF:"当前体脂率 (%)",
+      goalWeight:"目标体重 (kg)", goalWaist:"目标腰围 (cm)", goalBF:"目标体脂率 (%)",
+      goalHint:"可选项 —— 在上方填写目标即可查看时间估算。",
+      goalNeedData:"请先填写个人信息以计算 TDEE。",
+      goalNeedBF:"请填写当前体脂率以进行估算。",
+      goalReached:"🎉 你已经达到或超过这个目标了。",
+      goalCut:"还需减去约 <b>{kg} kg</b>。按 <b>{off} kcal/天</b> 的缺口大约需要 <b>{weeks} 周</b>（约 <b>{date}</b>）。",
+      goalBulk:"还需增加约 <b>{kg} kg</b>。按 <b>{off} kcal/天</b> 的盈余大约需要 <b>{weeks} 周</b>（约 <b>{date}</b>）。",
+      waistNote:"估算依据：约 1cm 腰围 ≈ 1kg 脂肪，仅供粗略参考。",
+      bfNote:"假设减脂期间瘦体重保持不变。",
+      bulkNote:"实际肌肉增长比体重秤慢——部分涨秤是水分/糖原。",
+      secRules:"智能规则提醒",
+      rulesPurpose:"目的：根据每周真实称重反馈告诉你怎么调滑块，而不是盲信公式。",
+      deficitHead:"📉 当前缺口：{d} kcal / 天",
+      cutEst:"预计每周掉秤约 <b>{lo} ~ {hi} kg</b>（按缺口推算，以周均体重为准）。",
+      surplusHead:"📈 当前盈余：{s} kcal / 天",
+      bulkEst:"预计每周涨秤约 <b>{lo} ~ {hi} kg</b>（目标区间 0.25~0.5 kg/周）。",
+      sliderRules:"🎛️ 滑块调节规则",
+      cutRule1:"周掉秤 <b>&lt; 0.3 kg</b> → 滑块向左调（增加缺口 100~150 kcal）",
+      cutRule2:"周掉秤 <b>&gt; 0.8 kg</b> → 滑块向右调（减少缺口 100~200 kcal）",
+      bulkRule1:"连续两周涨 <b>&gt; 0.5 kg/周</b> → 滑块向左调（减少盈余）",
+      bulkRule2:"连续两周涨 <b>&lt; 0.25 kg/周</b> → 滑块向右调（增加盈余）",
+      rulesEmpty:"填写个人数据后生成调节规则。",
+      secHist:"历史快照与腰围追踪",
+      histPurpose:"目的：每周快照才是真正的反馈回路——根据这张表调滑块，而不是根据公式。",
+      snapBtn:"📸 记录今日快照",
+      thDate:"日期", thWeight:"体重(kg)", thWaist:"腰围(cm)", thMode:"模式", thIntake:"日均热量(kcal)", thAction:"操作",
+      del:"删除",
+      histEmpty:"暂无记录 —— 输入数据后点击上方按钮保存第一条快照。",
+      snapAlert:"请先填写体重、身高、年龄。",
+      tagCut:"减脂", tagBulk:"增肌",
+      bmiLine:"BMI：<b>{v}</b> —— <span class='bmi-cat'>{cat}</span>",
+      bmiUnder:"偏瘦（< 18.5）",
+      bmiOk:"健康体重（18.5 – 24.9）",
+      bmiOver:"超重（25 – 29.9）",
+      bmiObese:"肥胖（≥ 30）",
+      bmiMinorNote:"未满 18 岁：成人 BMI 分级不完全适用，正确的参考是生长曲线百分位。",
+      warnBFLow:"⚠️ 目标体脂太低了——不建议新手。这个水平通常会明显影响精力、恢复和激素。",
+      warnBFDanger:"🚫 该目标已低于必需体脂，对任何人都不安全。请提高目标——不显示时间估算。",
+      warnTargetLow:"⚠️ 该目标体重会让你低于健康 BMI 范围（BMI {bmi}），建议调高目标。",
+      warnTargetHigh:"⚠️ 该目标体重对应 BMI {bmi}，已明显进入超重区间。如果目标是肌肉，更慢更干净的增重通常效果更好。",
+      warnWaistAggressive:"⚠️ 腰围目标降幅超过 20%，非常激进，建议分阶段设定。",
+      footer:"所有热量为估算值，请以每周体重/腰围实际反馈为准。"
+    }
+  };
+
+  /* ═════════ storage: localStorage + in-memory fallback ═════════ */
+  var memStore = {};
+  var storage = {
+    get: function(k){ try{ return localStorage.getItem(k); }catch(e){ return (k in memStore)? memStore[k] : null; } },
+    set: function(k,v){ try{ localStorage.setItem(k,v); }catch(e){ memStore[k]=v; } }
+  };
+  var KEY_STATE = "ftdash_state_v2";
+  var KEY_HIST  = "ftdash_history_v1";
+
+  /* ═════════ constants — protein & fat scale with body weight, carbs always derived ═════════
+     Training cut : protein 2.2 g/kg · low-carb fat 0.8 g/kg · high-carb fat = low-carb fat − 5 g
+     Training bulk: protein 2.0 g/kg · fat 1.1 g/kg
+     No training  : cut only · maintenance = BMR × 1.2 (sedentary) · protein 1.6 g/kg · fat 0.8 g/kg */
+  var P_CUT = 2.2, P_BULK = 2.0, P_NT = 1.6;
+  var F_LOW_PER_KG = 0.8, F_HIGH_DELTA = -5, F_BULK_PER_KG = 1.1, F_NT_PER_KG = 0.8;
+  var SEDENTARY = 1.2;
+  var HIGH_MULT = 1.5, LOW_MULT = 0.833;                    // (1.5 + 0.833×3)/4 ≈ 1.0
+  var OFFSET_CFG = {
+    cut:  {min:-800, max:-100, def:-400},
+    cutNT:{min:-500, max:-100, def:-200},
+    bulk: {min:  50, max: 600, def: 250}
+  };
+  var KCAL_PER_KG = 7700;
+  var KG_PER_CM_WAIST = 1;   // rough heuristic: 1 cm waist ≈ 1 kg fat
+
+  /* ═════════ state ═════════ */
+  var state = {
+    lang:"en",
+    weight:"", waist:"", height:"", age:"",
+    sex:"m", activity:"1.55",
+    mode:"cut",
+    training:true,
+    offsetCut:OFFSET_CFG.cut.def, offsetBulk:OFFSET_CFG.bulk.def, offsetCutNT:OFFSET_CFG.cutNT.def,
+    goalType:"weight", goalTarget:"", currentBF:""
+  };
+
+  /* ═════════ helpers ═════════ */
+  var $ = function(id){ return document.getElementById(id); };
+  function t(key){ return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key; }
+  function tf(key, vars){
+    var s = t(key);
+    for(var k in vars){ s = s.split("{"+k+"}").join(vars[k]); }
+    return s;
+  }
+  function num(v){ var n = parseFloat(v); return isFinite(n) ? n : null; }
+  function r0(n){ return Math.round(n); }
+  function r1(n){ return Math.round(n*10)/10; }
+  function fmtOffset(off){ return (off<0? "−":"＋") + Math.abs(off); }
+  function fmtDate(d){
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function saveState(){ storage.set(KEY_STATE, JSON.stringify(state)); }
+  function loadState(){
+    var raw = storage.get(KEY_STATE);
+    if(!raw) return;
+    try{
+      var s = JSON.parse(raw);
+      for(var k in state){ if(s[k]!==undefined && s[k]!==null) state[k]=s[k]; }
+    }catch(e){}
+  }
+  function loadHist(){
+    var raw = storage.get(KEY_HIST);
+    if(!raw) return [];
+    try{ var a = JSON.parse(raw); return Array.isArray(a)? a : []; }catch(e){ return []; }
+  }
+  function saveHist(a){ storage.set(KEY_HIST, JSON.stringify(a)); }
+  function offsetKey(){
+    if(state.mode==="bulk") return "offsetBulk";
+    return state.training ? "offsetCut" : "offsetCutNT";
+  }
+  function offsetCfg(){
+    if(state.mode==="bulk") return OFFSET_CFG.bulk;
+    return state.training ? OFFSET_CFG.cut : OFFSET_CFG.cutNT;
+  }
+  function currentOffset(){ return state[offsetKey()]; }
+
+  var el = {
+    lang:$("langSelect"),
+    weight:$("weight"), waist:$("waist"), height:$("height"), age:$("age"),
+    sex:$("sex"), activity:$("activity"),
+    training:$("training"), activityField:$("activityField"), noTrainInfo:$("noTrainInfo"),
+    tdeeLabelEl:document.querySelector('.metric [data-i18n="tdeeLabel"]'),
+    btnCut:$("btnCut"), btnBulk:$("btnBulk"), modeTitle:$("modeTitle"),
+    offset:$("offset"), offsetVal:$("offsetVal"), minus:$("minus50"), plus:$("plus50"),
+    bmr:$("bmrVal"), tdee:$("tdeeVal"), intakeLine:$("intakeLine"),
+    alertBmr:$("alertBmr"), alertNearTdee:$("alertNearTdee"), alertLowCarb:$("alertLowCarb"),
+    resultTitle:$("resultTitle"), resultGrid:$("resultGrid"), avgLine:$("avgLine"),
+    goalType:$("goalType"), goalTarget:$("goalTarget"), goalTargetLabel:$("goalTargetLabel"),
+    bfNowField:$("bfNowField"), currentBF:$("currentBF"), goalResult:$("goalResult"),
+    ruleArea:$("ruleArea"),
+    snapBtn:$("snapBtn"), histTable:$("histTable"), histBody:$("histBody"), histEmpty:$("histEmpty")
+  };
+
+  /* ═════════ core calculation ═════════ */
+  function calc(){
+    var w=num(state.weight), h=num(state.height), a=num(state.age);
+    if(w===null||h===null||a===null||w<=0||h<=0||a<=0) return null;
+    var bmr = (state.sex==="m") ? 10*w+6.25*h-5*a+5 : 10*w+6.25*h-5*a-161;
+    var tdee = state.training ? bmr * parseFloat(state.activity) : bmr * SEDENTARY;
+    var intake = tdee + currentOffset();
+    var out = { bmr:bmr, tdee:tdee, intake:intake, weight:w, height:h, age:a,
+                bmi: w / Math.pow(h/100, 2) };
+    if(state.mode==="cut" && state.training){
+      var P = P_CUT * w;                       // 2.2 g/kg, same on high & low days
+      var fatLow  = F_LOW_PER_KG * w;          // 0.8 g/kg
+      var fatHigh = fatLow + F_HIGH_DELTA;     // low-carb fat − 5 g
+      var fatAvg  = (fatHigh*1 + fatLow*3) / 4;
+      out.protein = P; out.fatHigh = fatHigh; out.fatLow = fatLow;
+      var avgCarb = (intake - P*4 - fatAvg*9) / 4;
+      out.avgCarb = avgCarb;
+      out.highCarb = avgCarb*HIGH_MULT;
+      out.lowCarb  = avgCarb*LOW_MULT;
+      out.highKcal = out.highCarb*4 + fatHigh*9 + P*4;
+      out.lowKcal  = out.lowCarb*4  + fatLow*9  + P*4;
+      out.avgKcal  = (out.highKcal + out.lowKcal*3) / 4;
+    }else if(state.mode==="cut"){
+      // no training: single daily plan, no high/low split
+      var Pn = P_NT * w, Fn = F_NT_PER_KG * w;
+      out.protein = Pn; out.fatDay = Fn;
+      out.carb = (intake - Pn*4 - Fn*9) / 4;
+      out.dayKcal = out.carb*4 + Fn*9 + Pn*4;
+    }else{
+      // bulk (training only)
+      var Pb = P_BULK * w, Fb = F_BULK_PER_KG * w;
+      out.protein = Pb; out.fatDay = Fb;
+      out.carb = (intake - Pb*4 - Fb*9) / 4;
+      out.dayKcal = out.carb*4 + Fb*9 + Pb*4;
+    }
+    return out;
+  }
+
+  /* ═════════ static i18n rendering ═════════ */
+  function applyI18n(){
+    document.documentElement.lang = state.lang==="zh" ? "zh-CN" : state.lang;
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for(var i=0;i<nodes.length;i++){
+      nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+    }
+    el.snapBtn.textContent = t("snapBtn");
+    // goal type dropdown (mode-dependent)
+    var opts = (state.mode==="cut")
+      ? [["weight","goalWeight"],["waist","goalWaist"],["bodyfat","goalBF"]]
+      : [["weight","goalWeight"]];
+    var valid = opts.some(function(o){ return o[0]===state.goalType; });
+    if(!valid) state.goalType = "weight";
+    el.goalType.innerHTML = opts.map(function(o){
+      return '<option value="'+o[0]+'"'+(state.goalType===o[0]?' selected':'')+'>'+t(o[1])+'</option>';
+    }).join("");
+    el.goalTargetLabel.textContent =
+      state.goalType==="waist" ? t("goalWaist") :
+      state.goalType==="bodyfat" ? t("goalBF") : t("goalWeight");
+  }
+
+  /* ═════════ dynamic rendering ═════════ */
+  function bmiCategory(bmi){
+    if(bmi < 18.5) return {key:"bmiUnder", cls:"bmi-under"};
+    if(bmi < 25)   return {key:"bmiOk",    cls:"bmi-ok"};
+    if(bmi < 30)   return {key:"bmiOver",  cls:"bmi-over"};
+    return {key:"bmiObese", cls:"bmi-obese"};
+  }
+
+  function renderBmi(r){
+    var box = $("bmiLine");
+    if(!r){ box.style.display="none"; return; }
+    var cat = bmiCategory(r.bmi);
+    box.className = "bmi-line " + cat.cls;
+    box.style.display = "";
+    var html = tf("bmiLine", {v:r1(r.bmi), cat:t(cat.key)});
+    if(r.age < 18) html += '<div class="bmi-minor">'+t("bmiMinorNote")+'</div>';
+    box.innerHTML = html;
+  }
+
+  function macroBlock(carb, fat, protein){
+    return '<div class="macros">'
+      + '<div class="macro"><div class="n">'+Math.max(0,r0(carb))+'g</div><div class="t">'+t("carbs")+'</div></div>'
+      + '<div class="macro"><div class="n">'+r0(fat)+'g</div><div class="t">'+t("fat")+'</div></div>'
+      + '<div class="macro"><div class="n">'+r0(protein)+'g</div><div class="t">'+t("protein")+'</div></div>'
+      + '</div>';
+  }
+
+  function render(){
+    document.body.className = (state.mode==="cut") ? "mode-cut" : "mode-bulk";
+    el.modeTitle.textContent = t(state.mode==="cut" ? "modeCut" : "modeBulk");
+    el.btnCut.classList.toggle("active", state.mode==="cut");
+    el.btnBulk.classList.toggle("active", state.mode==="bulk");
+    el.lang.value = state.lang;
+
+    // training / no-training UI
+    el.btnBulk.disabled = !state.training;
+    el.activityField.style.display = state.training ? "" : "none";
+    el.noTrainInfo.textContent = t("noTrainInfo");
+    el.noTrainInfo.classList.toggle("show", !state.training);
+    el.tdeeLabelEl.textContent = t(state.training ? "tdeeLabel" : "tdeeLabelNT");
+
+    var cfg = offsetCfg();
+    el.offset.min = cfg.min; el.offset.max = cfg.max;
+    el.offset.value = currentOffset();
+    el.offsetVal.textContent = fmtOffset(currentOffset()) + " kcal";
+
+    var r = calc();
+
+    el.alertBmr.textContent = t("alertBmr");
+    el.alertNearTdee.textContent = t("alertNearTdee");
+    el.alertLowCarb.textContent = t("alertLowCarb");
+    el.alertBmr.classList.remove("show");
+    el.alertNearTdee.classList.remove("show");
+    el.alertLowCarb.classList.remove("show");
+
+    el.resultTitle.textContent =
+      state.mode==="bulk" ? t("resultTitleBulk") :
+      state.training ? t("resultTitleCut") : t("resultTitleCutNT");
+
+    if(!r){
+      el.bmr.textContent="—"; el.tdee.textContent="—";
+      el.intakeLine.innerHTML = t("intakeLabel")+" = TDEE "+(currentOffset()<0?"−":"＋")+" "+Math.abs(currentOffset())+" = <b>—</b> kcal";
+      el.resultGrid.innerHTML = '<div class="empty-msg" style="grid-column:1/-1">'+t("emptyResults")+'</div>';
+      el.avgLine.innerHTML = "";
+      renderBmi(null); renderGoal(null); renderRules(null);
+      return;
+    }
+    renderBmi(r);
+
+    el.bmr.textContent = r0(r.bmr);
+    el.tdee.textContent = r0(r.tdee);
+    el.intakeLine.innerHTML = t("intakeLabel")+" = TDEE "+(currentOffset()<0?"−":"＋")+" "+Math.abs(currentOffset())+" = <b>"+r0(r.intake)+"</b> kcal";
+
+    if(r.intake < r.bmr) el.alertBmr.classList.add("show");
+    if(state.mode==="cut" && r.intake > r.tdee-100) el.alertNearTdee.classList.add("show");
+    if(state.mode==="bulk" && r.carb < 150) el.alertLowCarb.classList.add("show");
+
+    if(state.mode==="cut" && state.training){
+      el.resultGrid.innerHTML =
+        '<div class="day-card"><h3>'+t("highDay")+'</h3>'
+        + '<div class="kcal">'+r0(r.highKcal)+' <small>kcal</small></div>'
+        + macroBlock(r.highCarb, r.fatHigh, r.protein) + '</div>'
+        + '<div class="day-card"><h3>'+t("lowDay")+'</h3>'
+        + '<div class="kcal">'+r0(r.lowKcal)+' <small>kcal</small></div>'
+        + macroBlock(r.lowCarb, r.fatLow, r.protein) + '</div>';
+      el.avgLine.innerHTML = tf("avgLine", {kcal:r0(r.avgKcal), c:Math.max(0,r0(r.avgCarb))});
+    }else if(state.mode==="cut"){
+      el.resultGrid.innerHTML =
+        '<div class="day-card"><h3>'+t("noTrainDay")+'</h3>'
+        + '<div class="kcal">'+r0(r.dayKcal)+' <small>kcal</small></div>'
+        + macroBlock(r.carb, r.fatDay, r.protein) + '</div>';
+      el.avgLine.innerHTML = "";
+    }else{
+      el.resultGrid.innerHTML =
+        '<div class="day-card"><h3>'+t("bulkDay")+'</h3>'
+        + '<div class="kcal">'+r0(r.dayKcal)+' <small>kcal</small></div>'
+        + macroBlock(r.carb, r.fatDay, r.protein) + '</div>';
+      el.avgLine.innerHTML = "";
+    }
+
+    renderGoal(r);
+    renderRules(r);
+
+    // publish daily targets (JSON) for the food-diary page
+    try{
+      var types = {};
+      if(state.mode==="cut" && state.training){
+        types.high = {kcal:r0(r.highKcal), c:Math.max(0,r0(r.highCarb)), f:r0(r.fatHigh), p:r0(r.protein)};
+        types.low  = {kcal:r0(r.lowKcal),  c:Math.max(0,r0(r.lowCarb)),  f:r0(r.fatLow),  p:r0(r.protein)};
+      }else if(state.mode==="cut"){
+        types.nt   = {kcal:r0(r.dayKcal),  c:Math.max(0,r0(r.carb)),     f:r0(r.fatDay),  p:r0(r.protein)};
+      }else{
+        types.bulk = {kcal:r0(r.dayKcal),  c:Math.max(0,r0(r.carb)),     f:r0(r.fatDay),  p:r0(r.protein)};
+      }
+      localStorage.setItem("ft_targets_v1", JSON.stringify(
+        {updated:Date.now(), training:state.training, mode:state.mode, types:types}
+      ));
+    }catch(e){}
+  }
+
+  /* ═════════ goal ETA ═════════ */
+  function renderGoal(r){
+    el.bfNowField.style.display = (state.mode==="cut" && state.goalType==="bodyfat") ? "" : "none";
+    var target = num(state.goalTarget);
+
+    function neutral(msg){ el.goalResult.className="goal-result neutral"; el.goalResult.innerHTML = msg; }
+    function ok(msg){ el.goalResult.className="goal-result"; el.goalResult.innerHTML = msg; }
+
+    if(target===null){ neutral(t("goalHint")); return; }
+    if(!r){ neutral(t("goalNeedData")); return; }
+
+    var offAbs = Math.abs(currentOffset());
+    var note = "";
+    var warnings = [];   // sanity checks on the target itself
+    var deltaKg = null;
+
+    // Body-fat sanity thresholds (sex-aware)
+    var BF_ESSENTIAL = state.sex==="m" ? 5  : 13;  // below this = unsafe, block estimate
+    var BF_LOW       = state.sex==="m" ? 12 : 18;  // below this = warn (not for beginners)
+
+    if(state.mode==="cut"){
+      if(state.goalType==="weight"){
+        deltaKg = r.weight - target;
+        var targetBmi = target / Math.pow(r.height/100, 2);
+        if(targetBmi < 18.5) warnings.push(tf("warnTargetLow", {bmi:r1(targetBmi)}));
+      }else if(state.goalType==="waist"){
+        var waistNow = num(state.waist);
+        if(waistNow===null){ neutral(t("goalNeedData")); return; }
+        deltaKg = (waistNow - target) * KG_PER_CM_WAIST;
+        if(target < waistNow * 0.8) warnings.push(t("warnWaistAggressive"));
+        note = t("waistNote");
+      }else{ // bodyfat
+        var bfNow = num(state.currentBF);
+        if(bfNow===null){ neutral(t("goalNeedBF")); return; }
+        if(target < BF_ESSENTIAL){
+          // Unsafe target: show the hard warning, no ETA
+          el.goalResult.className = "goal-result neutral";
+          el.goalResult.innerHTML = '<div class="goal-danger">'+t("warnBFDanger")+'</div>';
+          return;
+        }
+        if(target < BF_LOW) warnings.push(t("warnBFLow"));
+        var lean = r.weight * (1 - bfNow/100);
+        var targetWeight = lean / (1 - target/100);
+        deltaKg = r.weight - targetWeight;
+        note = t("bfNote");
+      }
+      if(deltaKg <= 0){ ok(t("goalReached")); return; }
+      var days = deltaKg * KCAL_PER_KG / offAbs;
+      var eta = new Date(Date.now() + days*86400000);
+      ok(tf("goalCut", {kg:r1(deltaKg), off:offAbs, weeks:r1(days/7), date:fmtDate(eta)})
+         + (note? '<div class="goal-note">'+note+'</div>' : "")
+         + warnings.map(function(w){ return '<div class="goal-warn">'+w+'</div>'; }).join(""));
+    }else{
+      // bulk: weight only
+      deltaKg = target - r.weight;
+      var targetBmiB = target / Math.pow(r.height/100, 2);
+      if(targetBmiB >= 28) warnings.push(tf("warnTargetHigh", {bmi:r1(targetBmiB)}));
+      if(deltaKg <= 0){ ok(t("goalReached")); return; }
+      var days2 = deltaKg * KCAL_PER_KG / offAbs;
+      var eta2 = new Date(Date.now() + days2*86400000);
+      ok(tf("goalBulk", {kg:r1(deltaKg), off:offAbs, weeks:r1(days2/7), date:fmtDate(eta2)})
+         + '<div class="goal-note">'+t("bulkNote")+'</div>'
+         + warnings.map(function(w){ return '<div class="goal-warn">'+w+'</div>'; }).join(""));
+    }
+  }
+
+  /* ═════════ rules ═════════ */
+  function renderRules(r){
+    if(!r){ el.ruleArea.innerHTML = '<div class="empty-msg">'+t("rulesEmpty")+'</div>'; return; }
+    var off = currentOffset();
+    if(state.mode==="cut"){
+      var deficit = Math.abs(off);
+      var est = deficit*7/KCAL_PER_KG;
+      el.ruleArea.innerHTML =
+        '<div class="rule-card"><div class="head">'+tf("deficitHead",{d:deficit})+'</div>'
+        + tf("cutEst",{lo:r1(est*0.85), hi:r1(est*1.25)}) + '</div>'
+        + '<div class="rule-card"><div class="head">'+t("sliderRules")+'</div><ul>'
+        + '<li>'+t("cutRule1")+'</li><li>'+t("cutRule2")+'</li></ul></div>';
+    }else{
+      var estG = off*7/KCAL_PER_KG;
+      el.ruleArea.innerHTML =
+        '<div class="rule-card"><div class="head">'+tf("surplusHead",{s:off})+'</div>'
+        + tf("bulkEst",{lo:r1(Math.max(0.1,estG*0.7)), hi:r1(estG*1.3)}) + '</div>'
+        + '<div class="rule-card"><div class="head">'+t("sliderRules")+'</div><ul>'
+        + '<li>'+t("bulkRule1")+'</li><li>'+t("bulkRule2")+'</li></ul></div>';
+    }
+  }
+
+  /* ═════════ history ═════════ */
+  function renderHistory(){
+    var hist = loadHist();
+    el.histEmpty.textContent = t("histEmpty");
+    if(hist.length===0){
+      el.histTable.style.display="none"; el.histEmpty.style.display="block"; return;
+    }
+    el.histTable.style.display="table"; el.histEmpty.style.display="none";
+    el.histBody.innerHTML = hist.slice(0,6).map(function(item){
+      var tag = item.mode==="cut"
+        ? '<span class="mode-tag tag-cut">'+t("tagCut")+' '+fmtOffset(item.offset)+'</span>'
+        : '<span class="mode-tag tag-bulk">'+t("tagBulk")+' '+fmtOffset(item.offset)+'</span>';
+      return '<tr>'
+        + '<td>'+item.date+'</td>'
+        + '<td>'+(item.weight!==null? item.weight : "—")+'</td>'
+        + '<td>'+(item.waist!==null? item.waist : "—")+'</td>'
+        + '<td>'+tag+'</td>'
+        + '<td>'+item.intake+'</td>'
+        + '<td><button class="del-btn" data-id="'+item.id+'">'+t("del")+'</button></td>'
+        + '</tr>';
+    }).join("");
+  }
+
+  el.snapBtn.addEventListener("click", function(){
+    var r = calc();
+    if(!r){ alert(t("snapAlert")); return; }
+    var hist = loadHist();
+    hist.unshift({
+      id:Date.now(), date:fmtDate(new Date()),
+      weight:num(state.weight), waist:num(state.waist),
+      mode:state.mode, offset:currentOffset(), intake:r0(r.intake)
+    });
+    saveHist(hist);
+    renderHistory();
+  });
+
+  el.histBody.addEventListener("click", function(e){
+    var btn = e.target.closest(".del-btn");
+    if(!btn) return;
+    var id = Number(btn.getAttribute("data-id"));
+    saveHist(loadHist().filter(function(x){ return x.id!==id; }));
+    renderHistory();
+  });
+
+  /* ═════════ events (live recalculation) ═════════ */
+  ["weight","waist","height","age"].forEach(function(k){
+    el[k].addEventListener("input", function(){ state[k]=el[k].value; saveState(); render(); });
+  });
+  el.sex.addEventListener("change", function(){ state.sex=el.sex.value; saveState(); render(); });
+  el.activity.addEventListener("change", function(){ state.activity=el.activity.value; saveState(); render(); });
+  el.training.addEventListener("change", function(){
+    state.training = (el.training.value==="yes");
+    if(!state.training && state.mode==="bulk") state.mode="cut";  // bulk locked without training
+    saveState(); applyI18n(); render();
+  });
+
+  el.offset.addEventListener("input", function(){
+    state[offsetKey()] = parseInt(el.offset.value,10);
+    saveState(); render();
+  });
+  function nudge(d){
+    var cfg = offsetCfg();
+    state[offsetKey()] = Math.min(cfg.max, Math.max(cfg.min, currentOffset()+d));
+    saveState(); render();
+  }
+  el.minus.addEventListener("click", function(){ nudge(-50); });
+  el.plus.addEventListener("click", function(){ nudge(50); });
+
+  el.btnCut.addEventListener("click", function(){ state.mode="cut"; saveState(); applyI18n(); render(); });
+  el.btnBulk.addEventListener("click", function(){
+    if(!state.training) return;  // locked in no-training mode
+    state.mode="bulk"; saveState(); applyI18n(); render();
+  });
+
+  el.goalType.addEventListener("change", function(){
+    state.goalType = el.goalType.value; saveState(); applyI18n(); render();
+  });
+  el.goalTarget.addEventListener("input", function(){ state.goalTarget=el.goalTarget.value; saveState(); render(); });
+  el.currentBF.addEventListener("input", function(){ state.currentBF=el.currentBF.value; saveState(); render(); });
+
+  el.lang.addEventListener("change", function(){
+    state.lang = el.lang.value; saveState(); applyI18n(); render(); renderHistory();
+  });
+
+  /* ═════════ init: restore everything from localStorage ═════════ */
+  loadState();
+  if(!state.training && state.mode==="bulk") state.mode="cut";  // enforce lock on restore
+  el.weight.value=state.weight; el.waist.value=state.waist;
+  el.height.value=state.height; el.age.value=state.age;
+  el.sex.value=state.sex; el.activity.value=state.activity;
+  el.training.value = state.training ? "yes" : "no";
+  el.goalTarget.value=state.goalTarget; el.currentBF.value=state.currentBF;
+  applyI18n();
+  render();
+  renderHistory();
+})();
+</script>
+</body>
+</html>
