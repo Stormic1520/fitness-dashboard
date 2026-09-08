@@ -72,6 +72,7 @@
   <!-- Add entry -->
   <section class="card">
     <h2 data-i18n="secAdd">Add to today</h2>
+    <p class="stats-line" data-i18n="hintAdd" style="margin:0 0 12px"></p>
     <div class="grid">
       <div class="field field-wide"><label data-i18n="lblSearch">Search food bank</label>
         <input type="text" id="foodSearch" data-i18n-ph="phSearch" placeholder="Type to filter…"></div>
@@ -97,6 +98,11 @@
   <!-- Food bank -->
   <section class="card">
     <h2 data-i18n="secFoods">Food bank</h2>
+    <p class="stats-line" data-i18n="hintFoods" style="margin:0 0 12px"></p>
+    <div class="btn-row" style="margin:0 0 14px">
+      <button class="btn secondary" id="impFoodsBtn" data-i18n="impFoods">⬆️ Import foods (JSON)</button>
+      <input type="file" id="impFoodsFile" accept="application/json" style="display:none">
+    </div>
     <div class="grid">
       <div class="field field-wide"><label data-i18n="fName">Name</label><input type="text" id="fName" maxlength="60"></div>
       <div class="field"><label data-i18n="fUnit">Type</label>
@@ -158,6 +164,11 @@
       kcalPer100:"kcal / 100 g", kcalPerPortion:"kcal / portion",
       foodEmpty:"No foods saved yet.", perG:"100 g", del:"Delete",
       delFoodConfirm:"Delete this food from the bank? Logged entries stay unchanged.",
+      hintAdd:"From the food bank (by grams or portions), or a one-off manual entry that is NOT saved to the bank.",
+      hintFoods:"Reusable foods live here — save them once, log them forever. Import your JSON food list with the button below.",
+      impFoods:"⬆️ Import foods (JSON)",
+      impFoodsOk:"Imported {n} foods ({m} skipped as duplicates).",
+      impFoodsErr:"Invalid file — expected the foods JSON.",
       footer:"All data is stored locally in your browser (JSON in localStorage)."
     },
     es:{
@@ -181,6 +192,11 @@
       kcalPer100:"kcal / 100 g", kcalPerPortion:"kcal / porción",
       foodEmpty:"Sin alimentos guardados.", perG:"100 g", del:"Borrar",
       delFoodConfirm:"¿Borrar este alimento del banco? Las entradas ya registradas no cambian.",
+      hintAdd:"Desde el banco (por gramos o porciones), o una entrada manual puntual que NO se guarda en el banco.",
+      hintFoods:"Aquí viven los alimentos reutilizables — guárdalos una vez, regístralos siempre. Importa tu JSON con el botón.",
+      impFoods:"⬆️ Importar alimentos (JSON)",
+      impFoodsOk:"Importados {n} alimentos ({m} omitidos por duplicados).",
+      impFoodsErr:"Archivo no válido — se esperaba el JSON de alimentos.",
       footer:"Todos los datos se guardan en tu navegador (JSON en localStorage)."
     },
     zh:{
@@ -204,12 +220,18 @@
       kcalPer100:"kcal / 100g", kcalPerPortion:"kcal / 每份",
       foodEmpty:"还没有保存的食物。", perG:"100g", del:"删除",
       delFoodConfirm:"从食物库删除该食物？已记录的条目不受影响。",
+      hintAdd:"从食物库选（按克或按份），或用「手动录入」记一次性的外食——手动条目不会存进食物库。",
+      hintFoods:"这里是可复用的常用食物——保存一次，以后天天能选。用下方按钮导入你的食物 JSON。",
+      impFoods:"⬆️ 导入食物 (JSON)",
+      impFoodsOk:"已导入 {n} 种食物（{m} 种重名跳过）。",
+      impFoodsErr:"文件无效——需要食物 JSON。",
       footer:"所有数据以 JSON 形式保存在你的浏览器 localStorage 中。"
     }
   };
 
   var lang = FT.getLang();
   function t(k){ return (I18N[lang]&&I18N[lang][k]) || I18N.en[k] || k; }
+  function tf(k,vars){ var s=t(k); for(var x in vars){ s=s.split("{"+x+"}").join(vars[x]); } return s; }
 
   var $ = function(id){ return document.getElementById(id); };
   var el = {
@@ -224,7 +246,8 @@
     mName:$("mName"), mKcal:$("mKcal"), mC:$("mC"), mF:$("mF"), mP:$("mP"), mAdd:$("mAdd"),
     fName:$("fName"), fUnit:$("fUnit"), fLabelField:$("fLabelField"), fLabel:$("fLabel"),
     fKcalLabel:$("fKcalLabel"), fKcal:$("fKcal"), fC:$("fC"), fF:$("fF"), fP:$("fP"), fAdd:$("fAdd"),
-    foodTable:$("foodTable"), foodBody:$("foodBody"), foodEmpty:$("foodEmpty")
+    foodTable:$("foodTable"), foodBody:$("foodBody"), foodEmpty:$("foodEmpty"),
+    impFoodsBtn:$("impFoodsBtn"), impFoodsFile:$("impFoodsFile")
   };
 
   /* ── data access ── */
@@ -478,6 +501,41 @@
     if(!confirm(t("delFoodConfirm"))) return;
     saveFoods(foods().filter(function(x){ return x.id!==btn.getAttribute("data-fid"); }));
     render();
+  });
+
+  /* ── food bank import (accepts full backup or a bare foods array) ── */
+  el.impFoodsBtn.addEventListener("click", function(){ el.impFoodsFile.click(); });
+  el.impFoodsFile.addEventListener("change", function(){
+    var file = el.impFoodsFile.files[0]; if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var parsed = JSON.parse(reader.result);
+        var list = Array.isArray(parsed) ? parsed
+                 : (parsed && parsed.data && Array.isArray(parsed.data.ft_foods_v1)) ? parsed.data.ft_foods_v1
+                 : (parsed && Array.isArray(parsed.ft_foods_v1)) ? parsed.ft_foods_v1
+                 : null;
+        if(!list) throw new Error("bad");
+        var fs = foods();
+        var names = {};
+        fs.forEach(function(f){ names[f.name.toLowerCase()] = true; });
+        var added = 0, skipped = 0;
+        list.forEach(function(x){
+          if(!x || !x.name || (x.unit!=="g" && x.unit!=="p") || typeof x.kcal!=="number"){ skipped++; return; }
+          if(names[String(x.name).toLowerCase()]){ skipped++; return; }
+          names[String(x.name).toLowerCase()] = true;
+          fs.push({ id:FT.uid(), name:String(x.name), unit:x.unit, label:x.label||"",
+                    kcal:x.kcal, c:(typeof x.c==="number"?x.c:0),
+                    f:(typeof x.f==="number"?x.f:0), p:(typeof x.p==="number"?x.p:0) });
+          added++;
+        });
+        saveFoods(fs);
+        alert(tf("impFoodsOk",{n:added,m:skipped}));
+        render();
+      }catch(e){ alert(t("impFoodsErr")); }
+      el.impFoodsFile.value = "";
+    };
+    reader.readAsText(file);
   });
 
   /* ── init ── */
