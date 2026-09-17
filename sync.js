@@ -1,8 +1,8 @@
-/* GitHub sync engine — stores app data as one JSON file in a (private) GitHub repo.
-   Login = fine-grained Personal Access Token + "owner/repo". Token never leaves this device. */
+/* GitHub sync engine v2 — revision-counter model (no device clocks).
+   Every push = remote rev + 1. A device only pushes when it has real local
+   edits (dirty flag); otherwise the higher rev always wins. */
 function initGitSync(cfg){
   "use strict";
-  // cfg: { appName, filePath, watchKeys:[], getLang:fn }
   var META = cfg.appName + "_sync_cfg";
   var API  = "https://api.github.com";
   var BRANCH = "main";
@@ -29,14 +29,23 @@ function initGitSync(cfg){
   };
   function t(k){ var l=cfg.getLang(); return (DICT[l]&&DICT[l][k])||DICT.en[k]||k; }
 
-  /* raw storage (bypasses our own patch) */
+  /* ── debug log (visible in the ⚙ panel) ── */
+  var LOG=[];
+  function log(s){
+    var ts=new Date().toTimeString().slice(0,8);
+    LOG.push(ts+" "+s); if(LOG.length>30) LOG.shift();
+    var box=document.getElementById("gsLog");
+    if(box && box.offsetParent!==null) box.textContent=LOG.join("\n");
+  }
+
+  /* ── raw storage (bypasses our own patch) ── */
   var _set = Storage.prototype.setItem;
   function rawSet(k,v){ try{ _set.call(window.localStorage,k,v); }catch(e){} }
   function rawGet(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } }
   function meta(){ try{ return JSON.parse(rawGet(META)||"{}"); }catch(e){ return {}; } }
   function saveMeta(m){ rawSet(META, JSON.stringify(m)); }
 
-  /* intercept writes to watched keys → mark dirty + debounce push */
+  /* ── intercept real changes to watched keys ── */
   var applying=false, pushTimer=null;
   Storage.prototype.setItem = function(k,v){
     var changed=true;
@@ -44,10 +53,11 @@ function initGitSync(cfg){
       try{ changed = window.localStorage.getItem(k)!==String(v); }catch(e){}
     }
     _set.apply(this,arguments);
-    if(this===window.localStorage && !applying && changed && cfg.watchKeys.indexOf(k)>=0) markChanged();
+    if(this===window.localStorage && !applying && changed && cfg.watchKeys.indexOf(k)>=0) markChanged(k);
   };
-  function markChanged(){
-    var m=meta(); m.updated=Date.now(); saveMeta(m);
+  function markChanged(k){
+    var m=meta(); m.dirty=true; saveMeta(m);
+    log("edit: "+k);
     if(m.token){ setStatus("pending"); clearTimeout(pushTimer);
       pushTimer=setTimeout(function(){ pushTimer=null; doPush(); },1000); }
   }
@@ -60,16 +70,18 @@ function initGitSync(cfg){
     });
     return data;
   }
-  function applyRemote(data, updated){
+  function applyRemote(r){
     applying=true;
-    for(var k in data){
-      if(cfg.watchKeys.indexOf(k)>=0) rawSet(k, typeof data[k]==="string"? data[k] : JSON.stringify(data[k]));
+    for(var k in r.data){
+      if(cfg.watchKeys.indexOf(k)>=0) rawSet(k, typeof r.data[k]==="string"? r.data[k] : JSON.stringify(r.data[k]));
     }
     applying=false;
-    var m=meta(); m.updated=updated; m.pushed=updated; saveMeta(m);
+    var m=meta(); m.rev=r.rev; m.dirty=false; saveMeta(m);
+    log("applied remote rev "+r.rev);
   }
+  function sameData(a){ return JSON.stringify(a)===JSON.stringify(collect()); }
 
-  /* GitHub Contents API */
+  /* ── GitHub Contents API ── */
   function tfetch(url, opts){
     var ctrl = ("AbortController" in window)? new AbortController() : null;
     if(ctrl){ opts=opts||{}; opts.signal=ctrl.signal; setTimeout(function(){ ctrl.abort(); },15000); }
@@ -99,68 +111,80 @@ function initGitSync(cfg){
       if(!res.ok) throw {code:res.status};
       etag=res.headers.get("ETag");
       return res.json().then(function(j){
-        var payload; try{ payload=JSON.parse(b64dec(j.content)); }catch(e){ payload={updated:0,data:{}}; }
-        return { sha:j.sha, updated:payload.updated||0, data:payload.data||{} };
+        var payload; try{ payload=JSON.parse(b64dec(j.content)); }catch(e){ payload={}; }
+        return { sha:j.sha, rev:payload.rev||0, data:payload.data||{} };
       });
     });
   }
-  function putRemote(sha){
-    var m=meta();
-    var payload={ app:cfg.appName, version:1, updated:m.updated||Date.now(), data:collect() };
-    var body={ message:cfg.appName+" sync "+new Date().toISOString(),
+  function putRemote(sha, rev){
+    var payload={ app:cfg.appName, version:2, rev:rev, updated:new Date().toISOString(), data:collect() };
+    var body={ message:cfg.appName+" sync rev "+rev,
                content:b64enc(JSON.stringify(payload,null,2)), branch:branch() };
     if(sha) body.sha=sha;
+    var m=meta();
     return api("PUT","/repos/"+m.repo+"/contents/"+cfg.filePath, body).then(function(res){
       if(res.status===401) throw {code:401};
       if(res.status===409 || res.status===422) throw {code:409};
       if(!res.ok) throw {code:res.status};
-      var mm=meta(); mm.pushed=payload.updated; saveMeta(mm);
+      var mm=meta(); mm.rev=rev; mm.dirty=false; saveMeta(mm);
+      log("pushed rev "+rev);
       return res.json();
     });
   }
 
+  /* ── sync core: one reconcile routine for load, poll and push ── */
   var busy=false;
-  function doPush(silent, tries){
-    if(!meta().token) return;
-    if(busy){ setTimeout(function(){ doPush(silent, tries); },1200); return; }
+  function reconcile(opts){
+    // opts: {silent, useEtag, tries}
+    opts=opts||{};
+    if(!meta().token){ setStatus("off"); return; }
+    if(busy){ return; }
     busy=true;
-    if(!silent) setStatus("syncing");
-    getRemote().then(function(r){
-      if(!r.missing && r.updated > (meta().updated||0)){
-        // remote is newer than us — take it instead of clobbering
-        if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        var m0=meta(); m0.updated=r.updated; m0.pushed=r.updated; saveMeta(m0); setStatus("synced"); return;
+    if(!opts.silent) setStatus("syncing");
+    getRemote(opts.useEtag).then(function(r){
+      var m=meta();
+      if(r.unchanged){
+        // remote hasn't moved; if we owe changes, redo without the ETag to get a sha and push
+        if(m.dirty){ throw {code:409}; }
+        setStatus("synced"); return;
       }
-      // ensure our stamp is strictly newer than remote even if device clocks disagree
-      var m=meta(); m.updated=Math.max(m.updated||0,(r.missing?0:r.updated)+1); saveMeta(m);
-      return putRemote(r.missing? null : r.sha).then(function(){ setStatus("synced"); });
+      if(r.missing){
+        log("remote file missing → creating rev 1");
+        return putRemote(null, 1).then(function(){ setStatus("synced"); });
+      }
+      if(r.rev > (m.rev||0)){
+        if(m.dirty){
+          // true concurrent edit: our edits win, based on the newest remote rev
+          log("conflict: remote rev "+r.rev+" vs local rev "+(m.rev||0)+" dirty → push on top");
+          return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); });
+        }
+        if(!sameData(r.data)){ applyRemote(r); location.reload(); return; }
+        var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2); setStatus("synced"); return;
+      }
+      // remote rev <= ours
+      if(m.dirty){
+        return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); });
+      }
+      if(!sameData(r.data)){
+        // same/older rev but different content (legacy file or manual edit) → remote is truth
+        log("self-heal: content differs at rev "+r.rev+" → applying remote");
+        applyRemote(r); location.reload(); return;
+      }
+      setStatus("synced");
     }).catch(function(e){
-      if(e && e.code===409 && (tries||0)<3){ setTimeout(function(){ doPush(silent,(tries||0)+1); },800); return; }
-      if(silent) return; // background flush killed by the OS: stay quiet, next check reconciles
-      setStatus(e&&e.code===401? "badToken" : e&&e.code===409? "err" : "err");
+      if(e && e.code===409 && (opts.tries||0)<3){
+        busy=false;
+        log("sha race → retry "+((opts.tries||0)+1));
+        setTimeout(function(){ reconcile({silent:opts.silent, tries:(opts.tries||0)+1}); },800);
+        return;
+      }
+      log("error: "+(e&&e.code? e.code : (e&&e.name)||"network"));
+      if(!opts.silent) setStatus(e&&e.code===401? "badToken" : "err");
     }).finally(function(){ busy=false; });
   }
+  function doPush(silent){ reconcile({silent:silent}); }
 
-  function doPullOnLoad(){
-    if(!meta().token) { setStatus("off"); return; }
-    if(busy) return;
-    busy=true;
-    setStatus("syncing");
-    getRemote().then(function(r){
-      var m=meta();
-      if(r.missing){ doPush(); return; }
-      var dirty=(m.updated||0) > (m.pushed||0);
-      if(r.updated > (m.updated||0)){
-        if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        m.updated=r.updated; m.pushed=r.updated; saveMeta(m); setStatus("synced");
-      }else if((m.updated||0) > r.updated || dirty){
-        doPush();
-      }else setStatus("synced");
-    }).catch(function(e){ setStatus(e&&e.code===401? "badToken":"err"); })
-      .finally(function(){ busy=false; });
-  }
-
-  /* first-time connect */
+  /* ── first-time connect ── */
   function connect(repo, token){
     var m=meta(); m.repo=repo.trim(); m.token=token.trim(); saveMeta(m);
     setStatus("syncing");
@@ -171,30 +195,32 @@ function initGitSync(cfg){
       return res.json();
     }).then(function(j){
       var mb=meta(); mb.branch=j.default_branch||"main"; saveMeta(mb);
+      log("connected, branch="+mb.branch);
       return getRemote();
     }).then(function(r){
       var localHasData = Object.keys(collect()).length>0;
-      if(r.missing || Object.keys(r.data).length===0){
-        // repo empty → upload this device's existing localStorage data
-        var m2=meta(); m2.updated=Date.now(); saveMeta(m2);
-        return putRemote(r.missing? null : r.sha).then(function(){ setStatus("synced"); ui.panel.style.display="none"; });
+      if(r.missing || Object.keys(r.data||{}).length===0){
+        var sha = r.missing? null : r.sha;
+        return putRemote(sha, (r.rev||0)+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; });
       }
-      if(!localHasData){
-        applyRemote(r.data, r.updated); location.reload(); return;
+      if(!localHasData){ applyRemote(r); location.reload(); return; }
+      if(sameData(r.data)){
+        var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2);
+        setStatus("synced"); ui.panel.style.display="none"; return;
       }
-      // both sides have data → explicit user choice
-      if(confirm(t("confirmRemote"))){ applyRemote(r.data, r.updated); location.reload(); }
-      else{ var m3=meta(); m3.updated=Date.now(); saveMeta(m3); return putRemote(r.sha).then(function(){ setStatus("synced"); ui.panel.style.display="none"; }); }
+      if(confirm(t("confirmRemote"))){ applyRemote(r); location.reload(); }
+      else{ return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; }); }
     }).catch(function(e){
+      log("connect error: "+(e&&e.code||"network"));
       setStatus(e&&e.code===401? "badToken" : e&&e.code===404? "notFound" : "err");
     });
   }
   function disconnect(){
     var m=meta(); delete m.token; delete m.repo; saveMeta(m);
-    setStatus("off");
+    setStatus("off"); log("disconnected");
   }
 
-  /* ── UI bar (injected) ── */
+  /* ── UI ── */
   var css = ".gs-bar{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--panel,#161b23);"
     + "border:1px solid var(--line,#28303d);border-radius:12px;font-size:.82rem;color:var(--muted,#8b96a5)}"
     + ".gs-dot{width:9px;height:9px;border-radius:50%;background:#8b96a5;flex:none}"
@@ -210,7 +236,9 @@ function initGitSync(cfg){
     + ".gs-panel .gs-actions{display:flex;gap:8px;margin-top:12px}"
     + ".gs-panel .gs-actions button{padding:9px 14px;border:none;border-radius:9px;cursor:pointer;font-family:inherit;font-weight:700}"
     + ".gs-connect{background:var(--accent,#3fa9f5);color:#0b0e12}"
-    + ".gs-disc{background:transparent;color:#e06060;border:1px solid #e06060!important}";
+    + ".gs-disc{background:transparent;color:#e06060;border:1px solid #e06060!important}"
+    + "#gsLog{margin-top:12px;padding:10px;background:#0b0e12;border:1px solid var(--line,#28303d);border-radius:8px;"
+    + "font-family:monospace;font-size:.68rem;color:#8b96a5;white-space:pre-wrap;max-height:160px;overflow-y:auto}";
   var style=document.createElement("style"); style.textContent=css; document.head.appendChild(style);
 
   var ui={};
@@ -224,7 +252,8 @@ function initGitSync(cfg){
       + '<label id="gsTokL"></label><input id="gsTok" type="password" placeholder="github_pat_…" autocomplete="off">'
       + '<div class="gs-actions"><button class="gs-connect" id="gsConnect" type="button"></button>'
       + '<button class="gs-disc" id="gsDisc" type="button"></button></div>'
-      + '<div class="gs-hint" id="gsHint"></div>';
+      + '<div class="gs-hint" id="gsHint"></div>'
+      + '<pre id="gsLog"></pre>';
     var anchor=document.querySelector(".site-nav")||document.querySelector("header");
     if(anchor && anchor.parentNode){
       anchor.parentNode.insertBefore(panel, anchor.nextSibling);
@@ -236,8 +265,9 @@ function initGitSync(cfg){
       panel.style.display = panel.style.display==="none"||!panel.style.display ? "block":"none";
       ui.repo.value = meta().repo||"";
       applyPanelText();
+      var box=document.getElementById("gsLog"); if(box) box.textContent=LOG.join("\n");
     };
-    document.getElementById("gsSync").onclick=function(){ if(meta().token) doPullOnLoad(); };
+    document.getElementById("gsSync").onclick=function(){ if(meta().token) reconcile({}); };
     document.getElementById("gsConnect").onclick=function(){
       if(ui.repo.value.trim() && ui.tok.value.trim()) connect(ui.repo.value, ui.tok.value);
     };
@@ -263,39 +293,21 @@ function initGitSync(cfg){
     ui.text.textContent=txt;
   }
 
-  /* periodic pull: every 45 s while visible, plus immediately when the tab/app regains focus */
+  /* ── scheduling ── */
   var POLL_MS=45000;
   function checkRemote(){
-    var m=meta();
-    if(!m.token || document.visibilityState==="hidden" || pushTimer || busy) return;
-    getRemote(true).then(function(r){
-      if(r.missing) return;
-      var mm=meta();
-      var dirty=(mm.updated||0) > (mm.pushed||0);
-      if(r.unchanged){
-        // remote hasn't moved: push if we owe changes, otherwise clear any stale error
-        if(dirty) doPush(); else if(lastStatus!=="synced") setStatus("synced");
-        return;
-      }
-      if(r.updated > (mm.updated||0)){
-        if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        mm.updated=r.updated; mm.pushed=r.updated; saveMeta(mm); setStatus("synced");
-      }else if((mm.updated||0) > r.updated || dirty){
-        doPush();
-      }else if(lastStatus!=="synced") setStatus("synced");
-    }).catch(function(){ /* transient network errors: try again next tick */ });
+    if(document.visibilityState==="hidden" || pushTimer) return;
+    reconcile({silent: lastStatus==="synced", useEtag:true});
   }
   setInterval(checkRemote, POLL_MS);
 
-  /* boot */
   if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded", function(){ buildUI(); doPullOnLoad(); });
-  }else{ buildUI(); doPullOnLoad(); }
+    document.addEventListener("DOMContentLoaded", function(){ buildUI(); reconcile({}); });
+  }else{ buildUI(); reconcile({}); }
 
-  // hidden → flush pending push; visible again → check the repo right away
   document.addEventListener("visibilitychange", function(){
     if(document.visibilityState==="hidden"){
-      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; doPush(true); }
+      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; reconcile({silent:true}); }
     }else{
       checkRemote();
     }
