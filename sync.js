@@ -62,7 +62,7 @@ function initGitSync(cfg){
       if(cfg.watchKeys.indexOf(k)>=0) rawSet(k, typeof data[k]==="string"? data[k] : JSON.stringify(data[k]));
     }
     applying=false;
-    var m=meta(); m.updated=updated; saveMeta(m);
+    var m=meta(); m.updated=updated; m.pushed=updated; saveMeta(m);
   }
 
   /* GitHub Contents API */
@@ -104,22 +104,26 @@ function initGitSync(cfg){
       if(res.status===401) throw {code:401};
       if(res.status===409 || res.status===422) throw {code:409};
       if(!res.ok) throw {code:res.status};
+      var mm=meta(); mm.pushed=payload.updated; saveMeta(mm);
       return res.json();
     });
   }
 
-  function doPush(){
+  function doPush(silent){
     if(!meta().token) return;
-    setStatus("syncing");
+    if(!silent) setStatus("syncing");
     getRemote().then(function(r){
       if(!r.missing && r.updated > (meta().updated||0)){
         // remote is newer than us — take it instead of clobbering
         if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        var m=meta(); m.updated=r.updated; saveMeta(m); setStatus("synced"); return;
+        var m0=meta(); m0.updated=r.updated; m0.pushed=r.updated; saveMeta(m0); setStatus("synced"); return;
       }
+      // ensure our stamp is strictly newer than remote even if device clocks disagree
+      var m=meta(); m.updated=Math.max(m.updated||0,(r.missing?0:r.updated)+1); saveMeta(m);
       return putRemote(r.missing? null : r.sha).then(function(){ setStatus("synced"); });
     }).catch(function(e){
-      if(e && e.code===409){ setTimeout(doPush,800); return; } // sha race → retry
+      if(e && e.code===409){ setTimeout(function(){ doPush(silent); },800); return; } // sha race → retry
+      if(silent) return; // background flush killed by the OS: stay quiet, next check reconciles
       setStatus(e&&e.code===401? "badToken" : "err");
     });
   }
@@ -129,12 +133,13 @@ function initGitSync(cfg){
     setStatus("syncing");
     getRemote().then(function(r){
       var m=meta();
-      if(r.missing){ return putRemote(null).then(function(){ setStatus("synced"); }); }
+      if(r.missing){ doPush(); return; }
+      var dirty=(m.updated||0) > (m.pushed||0);
       if(r.updated > (m.updated||0)){
         if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        m.updated=r.updated; saveMeta(m); setStatus("synced");
-      }else if((m.updated||0) > r.updated){
-        return putRemote(r.sha).then(function(){ setStatus("synced"); });
+        m.updated=r.updated; m.pushed=r.updated; saveMeta(m); setStatus("synced");
+      }else if((m.updated||0) > r.updated || dirty){
+        doPush();
       }else setStatus("synced");
     }).catch(function(e){ setStatus(e&&e.code===401? "badToken":"err"); });
   }
@@ -245,14 +250,20 @@ function initGitSync(cfg){
     var m=meta();
     if(!m.token || document.visibilityState==="hidden" || pushTimer) return;
     getRemote(true).then(function(r){
-      if(r.unchanged || r.missing) return;
+      if(r.missing) return;
       var mm=meta();
+      var dirty=(mm.updated||0) > (mm.pushed||0);
+      if(r.unchanged){
+        // remote hasn't moved: push if we owe changes, otherwise clear any stale error
+        if(dirty) doPush(); else if(lastStatus!=="synced") setStatus("synced");
+        return;
+      }
       if(r.updated > (mm.updated||0)){
         if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
-        mm.updated=r.updated; saveMeta(mm); setStatus("synced");
-      }else if((mm.updated||0) > r.updated){
-        doPush();  // this device has unpushed changes → reconcile
-      }
+        mm.updated=r.updated; mm.pushed=r.updated; saveMeta(mm); setStatus("synced");
+      }else if((mm.updated||0) > r.updated || dirty){
+        doPush();
+      }else if(lastStatus!=="synced") setStatus("synced");
     }).catch(function(){ /* transient network errors: try again next tick */ });
   }
   setInterval(checkRemote, POLL_MS);
@@ -265,7 +276,7 @@ function initGitSync(cfg){
   // hidden → flush pending push; visible again → check the repo right away
   document.addEventListener("visibilitychange", function(){
     if(document.visibilityState==="hidden"){
-      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; doPush(); }
+      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; doPush(true); }
     }else{
       checkRemote();
     }
