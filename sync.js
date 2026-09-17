@@ -44,7 +44,8 @@ function initGitSync(cfg){
   };
   function markChanged(){
     var m=meta(); m.updated=Date.now(); saveMeta(m);
-    if(m.token){ setStatus("pending"); clearTimeout(pushTimer); pushTimer=setTimeout(doPush,1500); }
+    if(m.token){ setStatus("pending"); clearTimeout(pushTimer);
+      pushTimer=setTimeout(function(){ pushTimer=null; doPush(); },1000); }
   }
 
   function collect(){
@@ -76,12 +77,17 @@ function initGitSync(cfg){
   function b64enc(s){ return btoa(unescape(encodeURIComponent(s))); }
   function b64dec(s){ return decodeURIComponent(escape(atob(s.replace(/\n/g,"")))); }
 
-  function getRemote(){
+  var etag=null;
+  function getRemote(useEtag){
     var m=meta();
-    return api("GET","/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+BRANCH).then(function(res){
+    var headers={ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" };
+    if(useEtag && etag) headers["If-None-Match"]=etag;
+    return fetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+BRANCH,{headers:headers}).then(function(res){
+      if(res.status===304) return {unchanged:true};
       if(res.status===404) return {missing:true};
       if(res.status===401) throw {code:401};
       if(!res.ok) throw {code:res.status};
+      etag=res.headers.get("ETag");
       return res.json().then(function(j){
         var payload; try{ payload=JSON.parse(b64dec(j.content)); }catch(e){ payload={updated:0,data:{}}; }
         return { sha:j.sha, updated:payload.updated||0, data:payload.data||{} };
@@ -233,14 +239,36 @@ function initGitSync(cfg){
     ui.text.textContent=txt;
   }
 
+  /* periodic pull: every 45 s while visible, plus immediately when the tab/app regains focus */
+  var POLL_MS=45000;
+  function checkRemote(){
+    var m=meta();
+    if(!m.token || document.visibilityState==="hidden" || pushTimer) return;
+    getRemote(true).then(function(r){
+      if(r.unchanged || r.missing) return;
+      var mm=meta();
+      if(r.updated > (mm.updated||0)){
+        if(JSON.stringify(r.data)!==JSON.stringify(collect())){ applyRemote(r.data,r.updated); location.reload(); return; }
+        mm.updated=r.updated; saveMeta(mm); setStatus("synced");
+      }else if((mm.updated||0) > r.updated){
+        doPush();  // this device has unpushed changes → reconcile
+      }
+    }).catch(function(){ /* transient network errors: try again next tick */ });
+  }
+  setInterval(checkRemote, POLL_MS);
+
   /* boot */
   if(document.readyState==="loading"){
     document.addEventListener("DOMContentLoaded", function(){ buildUI(); doPullOnLoad(); });
   }else{ buildUI(); doPullOnLoad(); }
 
-  // push pending changes when leaving the page
+  // hidden → flush pending push; visible again → check the repo right away
   document.addEventListener("visibilitychange", function(){
-    if(document.visibilityState==="hidden" && pushTimer){ clearTimeout(pushTimer); doPush(); }
+    if(document.visibilityState==="hidden"){
+      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; doPush(); }
+    }else{
+      checkRemote();
+    }
   });
 }
 
