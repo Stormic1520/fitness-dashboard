@@ -841,8 +841,10 @@
       }else{
         types.bulk = {kcal:r0(r.dayKcal),  c:Math.max(0,r0(r.carb)),     f:r0(r.fatDay),  p:r0(r.protein)};
       }
+      // no timestamp here: identical recomputes must produce identical strings,
+      // otherwise every page load looks like a "new change" to the sync engine
       localStorage.setItem("ft_targets_v1", JSON.stringify(
-        {updated:Date.now(), training:state.training, mode:state.mode, types:types}
+        {training:state.training, mode:state.mode, types:types}
       ));
     }catch(e){}
   }
@@ -1032,6 +1034,6 @@
   renderHistory();
 })();
 </script>
-<script src="sync.js"></script>
+<script src="sync.js?v=3"></script>
 </body>
 </html>

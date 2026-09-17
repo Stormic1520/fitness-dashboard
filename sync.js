@@ -39,8 +39,12 @@ function initGitSync(cfg){
   /* intercept writes to watched keys → mark dirty + debounce push */
   var applying=false, pushTimer=null;
   Storage.prototype.setItem = function(k,v){
+    var changed=true;
+    if(this===window.localStorage && cfg.watchKeys.indexOf(k)>=0){
+      try{ changed = window.localStorage.getItem(k)!==String(v); }catch(e){}
+    }
     _set.apply(this,arguments);
-    if(this===window.localStorage && !applying && cfg.watchKeys.indexOf(k)>=0) markChanged();
+    if(this===window.localStorage && !applying && changed && cfg.watchKeys.indexOf(k)>=0) markChanged();
   };
   function markChanged(){
     var m=meta(); m.updated=Date.now(); saveMeta(m);
@@ -218,7 +222,7 @@ function initGitSync(cfg){
       ui.repo.value = meta().repo||"";
       applyPanelText();
     };
-    document.getElementById("gsSync").onclick=function(){ var m=meta(); if(m.token){ m.updated=m.updated||Date.now(); saveMeta(m); doPush(); } };
+    document.getElementById("gsSync").onclick=function(){ if(meta().token) doPullOnLoad(); };
     document.getElementById("gsConnect").onclick=function(){
       if(ui.repo.value.trim() && ui.tok.value.trim()) connect(ui.repo.value, ui.tok.value);
     };
