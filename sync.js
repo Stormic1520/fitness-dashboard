@@ -70,9 +70,15 @@ function initGitSync(cfg){
   }
 
   /* GitHub Contents API */
+  function tfetch(url, opts){
+    var ctrl = ("AbortController" in window)? new AbortController() : null;
+    if(ctrl){ opts=opts||{}; opts.signal=ctrl.signal; setTimeout(function(){ ctrl.abort(); },15000); }
+    return fetch(url, opts);
+  }
+  function branch(){ return meta().branch || BRANCH; }
   function api(method, path, body){
     var m=meta();
-    return fetch(API+path,{
+    return tfetch(API+path,{
       method:method,
       headers:{ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" },
       body: body? JSON.stringify(body) : undefined
@@ -86,7 +92,7 @@ function initGitSync(cfg){
     var m=meta();
     var headers={ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" };
     if(useEtag && etag) headers["If-None-Match"]=etag;
-    return fetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+BRANCH,{headers:headers}).then(function(res){
+    return tfetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+branch(),{headers:headers}).then(function(res){
       if(res.status===304) return {unchanged:true};
       if(res.status===404) return {missing:true};
       if(res.status===401) throw {code:401};
@@ -102,7 +108,7 @@ function initGitSync(cfg){
     var m=meta();
     var payload={ app:cfg.appName, version:1, updated:m.updated||Date.now(), data:collect() };
     var body={ message:cfg.appName+" sync "+new Date().toISOString(),
-               content:b64enc(JSON.stringify(payload,null,2)), branch:BRANCH };
+               content:b64enc(JSON.stringify(payload,null,2)), branch:branch() };
     if(sha) body.sha=sha;
     return api("PUT","/repos/"+m.repo+"/contents/"+cfg.filePath, body).then(function(res){
       if(res.status===401) throw {code:401};
@@ -113,8 +119,11 @@ function initGitSync(cfg){
     });
   }
 
-  function doPush(silent){
+  var busy=false;
+  function doPush(silent, tries){
     if(!meta().token) return;
+    if(busy){ setTimeout(function(){ doPush(silent, tries); },1200); return; }
+    busy=true;
     if(!silent) setStatus("syncing");
     getRemote().then(function(r){
       if(!r.missing && r.updated > (meta().updated||0)){
@@ -126,14 +135,16 @@ function initGitSync(cfg){
       var m=meta(); m.updated=Math.max(m.updated||0,(r.missing?0:r.updated)+1); saveMeta(m);
       return putRemote(r.missing? null : r.sha).then(function(){ setStatus("synced"); });
     }).catch(function(e){
-      if(e && e.code===409){ setTimeout(function(){ doPush(silent); },800); return; } // sha race → retry
+      if(e && e.code===409 && (tries||0)<3){ setTimeout(function(){ doPush(silent,(tries||0)+1); },800); return; }
       if(silent) return; // background flush killed by the OS: stay quiet, next check reconciles
-      setStatus(e&&e.code===401? "badToken" : "err");
-    });
+      setStatus(e&&e.code===401? "badToken" : e&&e.code===409? "err" : "err");
+    }).finally(function(){ busy=false; });
   }
 
   function doPullOnLoad(){
     if(!meta().token) { setStatus("off"); return; }
+    if(busy) return;
+    busy=true;
     setStatus("syncing");
     getRemote().then(function(r){
       var m=meta();
@@ -145,7 +156,8 @@ function initGitSync(cfg){
       }else if((m.updated||0) > r.updated || dirty){
         doPush();
       }else setStatus("synced");
-    }).catch(function(e){ setStatus(e&&e.code===401? "badToken":"err"); });
+    }).catch(function(e){ setStatus(e&&e.code===401? "badToken":"err"); })
+      .finally(function(){ busy=false; });
   }
 
   /* first-time connect */
@@ -156,6 +168,9 @@ function initGitSync(cfg){
       if(res.status===401) throw {code:401};
       if(res.status===404) throw {code:404};
       if(!res.ok) throw {code:res.status};
+      return res.json();
+    }).then(function(j){
+      var mb=meta(); mb.branch=j.default_branch||"main"; saveMeta(mb);
       return getRemote();
     }).then(function(r){
       var localHasData = Object.keys(collect()).length>0;
@@ -252,7 +267,7 @@ function initGitSync(cfg){
   var POLL_MS=45000;
   function checkRemote(){
     var m=meta();
-    if(!m.token || document.visibilityState==="hidden" || pushTimer) return;
+    if(!m.token || document.visibilityState==="hidden" || pushTimer || busy) return;
     getRemote(true).then(function(r){
       if(r.missing) return;
       var mm=meta();
