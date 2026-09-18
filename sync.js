@@ -79,6 +79,14 @@ function initGitSync(cfg){
     var m=meta(); m.rev=r.rev; m.dirty=false; saveMeta(m);
     log("applied remote rev "+r.rev);
   }
+  function safeReload(){
+    try{
+      var last=+sessionStorage.getItem("gs_rl")||0;
+      if(Date.now()-last<30000){ log("loop guard: applied without reload"); return; }
+      sessionStorage.setItem("gs_rl", String(Date.now()));
+    }catch(e){}
+    location.reload();
+  }
   function sameData(a){ return JSON.stringify(a)===JSON.stringify(collect()); }
 
   /* ── GitHub Contents API ── */
@@ -158,7 +166,7 @@ function initGitSync(cfg){
           log("conflict: remote rev "+r.rev+" vs local rev "+(m.rev||0)+" dirty → push on top");
           return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); });
         }
-        if(!sameData(r.data)){ applyRemote(r); location.reload(); return; }
+        if(!sameData(r.data)){ applyRemote(r); safeReload(); return; }
         var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2); setStatus("synced"); return;
       }
       // remote rev <= ours
@@ -168,7 +176,7 @@ function initGitSync(cfg){
       if(!sameData(r.data)){
         // same/older rev but different content (legacy file or manual edit) → remote is truth
         log("self-heal: content differs at rev "+r.rev+" → applying remote");
-        applyRemote(r); location.reload(); return;
+        applyRemote(r); safeReload(); return;
       }
       setStatus("synced");
     }).catch(function(e){
@@ -203,12 +211,12 @@ function initGitSync(cfg){
         var sha = r.missing? null : r.sha;
         return putRemote(sha, (r.rev||0)+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; });
       }
-      if(!localHasData){ applyRemote(r); location.reload(); return; }
+      if(!localHasData){ applyRemote(r); safeReload(); return; }
       if(sameData(r.data)){
         var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2);
         setStatus("synced"); ui.panel.style.display="none"; return;
       }
-      if(confirm(t("confirmRemote"))){ applyRemote(r); location.reload(); }
+      if(confirm(t("confirmRemote"))){ applyRemote(r); safeReload(); }
       else{ return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; }); }
     }).catch(function(e){
       log("connect error: "+(e&&e.code||"network"));
