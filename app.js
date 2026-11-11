@@ -1,4 +1,5 @@
-/* Shared helpers for the fitness site — storage is localStorage with JSON values */
+/* Shared helpers for the fitness site — storage is the in-memory GS store
+   (loaded from GitHub by sync.js v3; persisted only via the 💾 button) */
 window.FT = (function(){
   "use strict";
   var KEYS = {
@@ -9,11 +10,11 @@ window.FT = (function(){
     hist:   "ftdash_history_v1"    // body snapshots
   };
   function getJSON(k, def){
-    try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }
+    try{ var v = window.GS ? GS.get(k) : null; return v ? JSON.parse(v) : def; }
     catch(e){ return def; }
   }
   function setJSON(k, obj){
-    try{ localStorage.setItem(k, JSON.stringify(obj)); return true; }
+    try{ if(window.GS){ GS.set(k, JSON.stringify(obj)); return true; } return false; }
     catch(e){ return false; }
   }
   function getLang(){ var s = getJSON(KEYS.state, {}); return s.lang || "en"; }

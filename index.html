@@ -321,9 +321,9 @@
 
 <footer data-i18n="footer"></footer>
 
-<script src="sync.js?v=6"></script>
+<script src="sync.js?v=7"></script>
 <script>
-(function(){
+window.__appBoot = function(){   /* started by sync.js v3 after GitHub data is loaded */
   "use strict";
 
   /* ═════════ i18n dictionaries ═════════ */
@@ -575,11 +575,10 @@
     }
   };
 
-  /* ═════════ storage: localStorage + in-memory fallback ═════════ */
-  var memStore = {};
+  /* ═════════ storage: in-memory GS store (GitHub-backed, manual save) ═════════ */
   var storage = {
-    get: function(k){ try{ return localStorage.getItem(k); }catch(e){ return (k in memStore)? memStore[k] : null; } },
-    set: function(k,v){ try{ localStorage.setItem(k,v); }catch(e){ memStore[k]=v; } }
+    get: function(k){ return window.GS ? GS.get(k) : null; },
+    set: function(k,v){ if(window.GS) GS.set(k, v); }
   };
   var KEY_STATE = "ftdash_state_v2";
   var KEY_HIST  = "ftdash_history_v1";
@@ -843,8 +842,8 @@
         types.bulk = {kcal:r0(r.dayKcal),  c:Math.max(0,r0(r.carb)),     f:r0(r.fatDay),  p:r0(r.protein)};
       }
       // no timestamp here: identical recomputes must produce identical strings,
-      // otherwise every page load looks like a "new change" to the sync engine
-      localStorage.setItem("ft_targets_v1", JSON.stringify(
+      // so re-rendering never counts as an unsaved change
+      storage.set("ft_targets_v1", JSON.stringify(
         {training:state.training, mode:state.mode, types:types}
       ));
     }catch(e){}
@@ -1022,7 +1021,7 @@
     state.lang = el.lang.value; saveState(); applyI18n(); render(); renderHistory();
   });
 
-  /* ═════════ init: restore everything from localStorage ═════════ */
+  /* ═════════ init: restore everything from the GitHub-loaded store ═════════ */
   loadState();
   if(!state.training && state.mode==="bulk") state.mode="cut";  // enforce lock on restore
   el.weight.value=state.weight; el.waist.value=state.waist;
@@ -1033,7 +1032,7 @@
   applyI18n();
   render();
   renderHistory();
-})();
+};
 </script>
 </body>
 </html>

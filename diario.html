@@ -137,9 +137,9 @@
 </div>
 
 <script src="app.js"></script>
-<script src="sync.js?v=6"></script>
+<script src="sync.js?v=7"></script>
 <script>
-(function(){
+window.__appBoot = function(){   /* started by sync.js v3 after GitHub data is loaded */
   "use strict";
   var K = FT.KEYS, r0 = FT.r0, r1 = FT.r1;
 
@@ -170,7 +170,7 @@
       impFoods:"⬆️ Import foods (JSON)",
       impFoodsOk:"Imported {n} foods ({m} skipped as duplicates).",
       impFoodsErr:"Invalid file — expected the foods JSON.",
-      footer:"All data is stored locally in your browser (JSON in localStorage)."
+      footer:"Data lives in your private GitHub repo. Press 💾 Save to upload your changes."
     },
     es:{
       pageTitle:"Diario de comidas", navCalc:"Calculadora", navDiary:"Diario", navSnap:"Registro corporal",
@@ -198,7 +198,7 @@
       impFoods:"⬆️ Importar alimentos (JSON)",
       impFoodsOk:"Importados {n} alimentos ({m} omitidos por duplicados).",
       impFoodsErr:"Archivo no válido — se esperaba el JSON de alimentos.",
-      footer:"Todos los datos se guardan en tu navegador (JSON en localStorage)."
+      footer:"Los datos viven en tu repositorio privado de GitHub. Pulsa 💾 Guardar para subir los cambios."
     },
     zh:{
       pageTitle:"饮食日记", navCalc:"计算器", navDiary:"饮食日记", navSnap:"体重快照",
@@ -226,7 +226,7 @@
       impFoods:"⬆️ 导入食物 (JSON)",
       impFoodsOk:"已导入 {n} 种食物（{m} 种重名跳过）。",
       impFoodsErr:"文件无效——需要食物 JSON。",
-      footer:"所有数据以 JSON 形式保存在你的浏览器 localStorage 中。"
+      footer:"数据保存在你的 GitHub 私有仓库。修改后记得按 💾 保存上传。"
     }
   };
 
@@ -543,7 +543,7 @@
   el.date.value = FT.today();
   applyI18n();
   render();
-})();
+};
 </script>
 </body>
 </html>

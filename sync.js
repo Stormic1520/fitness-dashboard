@@ -1,35 +1,52 @@
-/* GitHub sync engine v2 — revision-counter model (no device clocks).
-   Every push = remote rev + 1. A device only pushes when it has real local
-   edits (dirty flag); otherwise the higher rev always wins. */
+/* GitHub sync engine v3 — MANUAL SAVE. GitHub is the single source of truth.
+   · Page load  = always fetch the data file from GitHub (no version checks, no cache).
+   · Edits      = memory only. Nothing is persisted anywhere automatically.
+   · 💾 button  = the ONLY way data is written (PUT to the repo).
+   · localStorage holds the connection config (repo/token/branch) and nothing else. */
 function initGitSync(cfg){
   "use strict";
   var META = cfg.appName + "_sync_cfg";
   var API  = "https://api.github.com";
-  var BRANCH = "main";
 
   var DICT = {
-    en:{ off:"Sync: not connected", syncing:"Syncing…", synced:"Synced", pending:"Unsaved changes…",
-         err:"Sync error", badToken:"Invalid token (401)", notFound:"Repo not found (check owner/repo)",
-         settings:"GitHub sync", repo:"Repository (owner/repo)", token:"Token (fine-grained PAT)",
-         connect:"Connect", disconnect:"Disconnect", syncNow:"⟳ Sync now",
-         confirmRemote:"The repo already has data AND this device has data.\nOK = use the REPO data (overwrite this device).\nCancel = use THIS DEVICE's data (overwrite the repo).",
+    en:{ off:"Not connected", loading:"Loading from GitHub…", loaded:"Loaded",
+         pending:"● Unsaved changes", saving:"Saving…", saved:"Saved",
+         loadErr:"Load failed — data NOT loaded", badToken:"Invalid token (401)",
+         notFound:"Repo or file not found", newFile:"New file — press Save to create it",
+         save:"💾 Save", reloadTitle:"Reload from GitHub (discards unsaved changes)",
+         confirmReload:"You have UNSAVED changes. Reload from GitHub and lose them?",
+         confirmOverwrite:"The repo was modified after this page loaded (another device saved).\nOK = overwrite the repo with THIS page's data.\nCancel = do nothing (open the site in another tab to inspect).",
+         legacy:"Imported old local data — press Save to upload it",
+         settings:"GitHub connection", repo:"Repository (owner/repo)", token:"Token (fine-grained PAT)",
+         connect:"Connect", disconnect:"Disconnect",
          hint:"Create a PRIVATE repo for data. Token: GitHub → Settings → Developer settings → Fine-grained tokens → only that repo, Contents: Read & Write. Never commit the token to any repo." },
-    es:{ off:"Sync: sin conectar", syncing:"Sincronizando…", synced:"Sincronizado", pending:"Cambios sin guardar…",
-         err:"Error de sync", badToken:"Token no válido (401)", notFound:"Repo no encontrado (revisa owner/repo)",
-         settings:"Sincronización GitHub", repo:"Repositorio (owner/repo)", token:"Token (PAT fine-grained)",
-         connect:"Conectar", disconnect:"Desconectar", syncNow:"⟳ Sincronizar",
-         confirmRemote:"El repo ya tiene datos Y este dispositivo también.\nAceptar = usar los datos del REPO (sobrescribe este dispositivo).\nCancelar = usar los de ESTE DISPOSITIVO (sobrescribe el repo).",
+    es:{ off:"Sin conectar", loading:"Cargando de GitHub…", loaded:"Cargado",
+         pending:"● Cambios sin guardar", saving:"Guardando…", saved:"Guardado",
+         loadErr:"Error al cargar — datos NO cargados", badToken:"Token no válido (401)",
+         notFound:"Repo o archivo no encontrado", newFile:"Archivo nuevo — pulsa Guardar para crearlo",
+         save:"💾 Guardar", reloadTitle:"Recargar desde GitHub (descarta cambios sin guardar)",
+         confirmReload:"Tienes cambios SIN GUARDAR. ¿Recargar desde GitHub y perderlos?",
+         confirmOverwrite:"El repo fue modificado después de cargar esta página (otro dispositivo guardó).\nAceptar = sobrescribir el repo con los datos de ESTA página.\nCancelar = no hacer nada.",
+         legacy:"Datos locales antiguos importados — pulsa Guardar para subirlos",
+         settings:"Conexión GitHub", repo:"Repositorio (owner/repo)", token:"Token (PAT fine-grained)",
+         connect:"Conectar", disconnect:"Desconectar",
          hint:"Crea un repo PRIVADO para los datos. Token: GitHub → Settings → Developer settings → Fine-grained tokens → solo ese repo, Contents: Read & Write. Nunca subas el token a ningún repo." },
-    zh:{ off:"同步：未连接", syncing:"同步中…", synced:"已同步", pending:"有未上传的修改…",
-         err:"同步出错", badToken:"Token 无效 (401)", notFound:"找不到仓库（检查 owner/repo）",
-         settings:"GitHub 同步", repo:"仓库 (owner/repo)", token:"Token（fine-grained PAT）",
-         connect:"连接", disconnect:"断开", syncNow:"⟳ 立即同步",
-         confirmRemote:"仓库里已有数据，本设备也有数据。\n确定 = 使用仓库数据（覆盖本机）。\n取消 = 使用本机数据（覆盖仓库）。",
+    zh:{ off:"未连接", loading:"正在从 GitHub 读取…", loaded:"已加载",
+         pending:"● 有未保存的修改", saving:"保存中…", saved:"已保存",
+         loadErr:"读取失败——数据未加载", badToken:"Token 无效 (401)",
+         notFound:"找不到仓库或文件", newFile:"新文件——按保存创建",
+         save:"💾 保存", reloadTitle:"从 GitHub 重新加载（放弃未保存的修改）",
+         confirmReload:"有未保存的修改。确定重新加载并丢弃吗？",
+         confirmOverwrite:"仓库在本页加载之后被修改过（其他设备保存了）。\n确定 = 用本页数据覆盖仓库。\n取消 = 什么都不做。",
+         legacy:"已导入本机旧数据——按保存上传",
+         settings:"GitHub 连接", repo:"仓库 (owner/repo)", token:"Token（fine-grained PAT）",
+         connect:"连接", disconnect:"断开",
          hint:"请为数据建一个私有仓库。Token 获取：GitHub → Settings → Developer settings → Fine-grained tokens → 只授权该仓库，Contents 读写。永远不要把 Token 提交进任何仓库的代码里。" }
   };
-  function t(k){ var l=cfg.getLang(); return (DICT[l]&&DICT[l][k])||DICT.en[k]||k; }
+  function t(k){ var l="en"; try{ l=cfg.getLang()||"en"; }catch(e){}
+    return (DICT[l]&&DICT[l][k])||DICT.en[k]||k; }
 
-  /* ── debug log (visible in the ⚙ panel) ── */
+  /* ── debug log (⚙ panel) ── */
   var LOG=[];
   function log(s){
     var ts=new Date().toTimeString().slice(0,8);
@@ -38,165 +55,151 @@ function initGitSync(cfg){
     if(box && box.offsetParent!==null) box.textContent=LOG.join("\n");
   }
 
-  /* ── raw storage (bypasses our own patch) ── */
-  var _set = Storage.prototype.setItem;
-  function rawSet(k,v){ try{ _set.call(window.localStorage,k,v); }catch(e){} }
-  function rawGet(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } }
-  function meta(){ try{ return JSON.parse(rawGet(META)||"{}"); }catch(e){ return {}; } }
-  function saveMeta(m){ rawSet(META, JSON.stringify(m)); }
+  /* ── connection config (the ONLY thing in localStorage) ── */
+  function meta(){ try{ return JSON.parse(localStorage.getItem(META)||"{}"); }catch(e){ return {}; } }
+  function saveMeta(m){ try{ localStorage.setItem(META, JSON.stringify(m)); }catch(e){} }
+  function branch(){ return meta().branch || "main"; }
 
-  /* ── intercept real changes to watched keys ── */
-  var applying=false, pushTimer=null;
-  Storage.prototype.setItem = function(k,v){
-    var changed=true;
-    if(this===window.localStorage && cfg.watchKeys.indexOf(k)>=0){
-      try{ changed = window.localStorage.getItem(k)!==String(v); }catch(e){}
+  /* ── in-memory data store (string values, same shape the app always used) ── */
+  var sha=null;          // sha of the file version this page loaded
+  var dirty=false;
+  window.GS = {
+    ready:false,
+    data:{},                                  // key -> JSON string
+    get:function(k){ return (k in this.data)? this.data[k] : null; },
+    set:function(k,v){
+      v=String(v);
+      if(this.data[k]===v) return;            // identical recompute → not a change
+      this.data[k]=v;
+      if(!dirty){ dirty=true; setStatus("pending"); }
+      else setStatus("pending");
     }
-    _set.apply(this,arguments);
-    if(this===window.localStorage && !applying && changed && cfg.watchKeys.indexOf(k)>=0) markChanged(k);
   };
-  function markChanged(k){
-    var m=meta(); m.dirty=true; saveMeta(m);
-    log("edit: "+k);
-    if(m.token){ setStatus("pending"); clearTimeout(pushTimer);
-      pushTimer=setTimeout(function(){ pushTimer=null; doPush(); },1000); }
-  }
-
-  function collect(){
-    var data={};
-    cfg.watchKeys.forEach(function(k){
-      var v=rawGet(k);
-      if(v!==null){ try{ data[k]=JSON.parse(v); }catch(e){ data[k]=v; } }
-    });
-    return data;
-  }
-  function applyRemote(r){
-    applying=true;
-    for(var k in r.data){
-      if(cfg.watchKeys.indexOf(k)>=0) rawSet(k, typeof r.data[k]==="string"? r.data[k] : JSON.stringify(r.data[k]));
-    }
-    applying=false;
-    var m=meta(); m.rev=r.rev; m.dirty=false; saveMeta(m);
-    log("applied remote rev "+r.rev);
-  }
-  function safeReload(){
-    try{
-      var last=+sessionStorage.getItem("gs_rl")||0;
-      if(Date.now()-last<30000){ log("loop guard: applied without reload"); return; }
-      sessionStorage.setItem("gs_rl", String(Date.now()));
-    }catch(e){}
-    location.reload();
-  }
-  function sameData(a){ return JSON.stringify(a)===JSON.stringify(collect()); }
+  function markSaved(){ dirty=false; }
 
   /* ── GitHub Contents API ── */
   function tfetch(url, opts){
-    var ctrl = ("AbortController" in window)? new AbortController() : null;
+    var ctrl=("AbortController" in window)? new AbortController():null;
     if(ctrl){ opts=opts||{}; opts.signal=ctrl.signal; setTimeout(function(){ ctrl.abort(); },15000); }
-    return fetch(url, opts);
-  }
-  function branch(){ return meta().branch || BRANCH; }
-  function api(method, path, body){
-    var m=meta();
-    return tfetch(API+path,{
-      method:method,
-      headers:{ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" },
-      body: body? JSON.stringify(body) : undefined
-    });
+    return fetch(url,opts);
   }
   function b64enc(s){ return btoa(unescape(encodeURIComponent(s))); }
   function b64dec(s){ return decodeURIComponent(escape(atob(s.replace(/\n/g,"")))); }
-
-  var etag=null;
-  function getRemote(useEtag){
+  function getRemote(){
     var m=meta();
-    var headers={ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" };
-    if(useEtag && etag) headers["If-None-Match"]=etag;
-    return tfetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+branch(),{headers:headers}).then(function(res){
-      if(res.status===304) return {unchanged:true};
+    return tfetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath+"?ref="+branch(),{
+      headers:{ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" }
+    }).then(function(res){
       if(res.status===404) return {missing:true};
       if(res.status===401) throw {code:401};
       if(!res.ok) throw {code:res.status};
-      etag=res.headers.get("ETag");
       return res.json().then(function(j){
         var payload; try{ payload=JSON.parse(b64dec(j.content)); }catch(e){ payload={}; }
         return { sha:j.sha, rev:payload.rev||0, data:payload.data||{} };
       });
     });
   }
-  function putRemote(sha, rev){
-    var payload={ app:cfg.appName, version:2, rev:rev, updated:new Date().toISOString(), data:collect() };
-    var body={ message:cfg.appName+" sync rev "+rev,
-               content:b64enc(JSON.stringify(payload,null,2)), branch:branch() };
-    if(sha) body.sha=sha;
+  function putRemote(useSha){
+    var dataObj={};
+    for(var k in GS.data){
+      try{ dataObj[k]=JSON.parse(GS.data[k]); }catch(e){ dataObj[k]=GS.data[k]; }
+    }
     var m=meta();
-    return api("PUT","/repos/"+m.repo+"/contents/"+cfg.filePath, body).then(function(res){
+    var payload={ app:cfg.appName, version:3, rev:(curRev||0)+1,
+                  updated:new Date().toISOString(), data:dataObj };
+    var body={ message:cfg.appName+" manual save rev "+payload.rev,
+               content:b64enc(JSON.stringify(payload,null,2)), branch:branch() };
+    if(useSha) body.sha=useSha;
+    return tfetch(API+"/repos/"+m.repo+"/contents/"+cfg.filePath,{
+      method:"PUT",
+      headers:{ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" },
+      body:JSON.stringify(body)
+    }).then(function(res){
       if(res.status===401) throw {code:401};
-      if(res.status===409 || res.status===422) throw {code:409};
+      if(res.status===409||res.status===422) throw {code:409};
       if(!res.ok) throw {code:res.status};
-      var mm=meta(); mm.rev=rev; mm.dirty=false; saveMeta(mm);
-      log("pushed rev "+rev);
-      return res.json();
+      return res.json().then(function(j){
+        sha=j.content.sha; curRev=payload.rev; markSaved();
+        log("saved rev "+payload.rev);
+      });
     });
   }
 
-  /* ── sync core: one reconcile routine for load, poll and push ── */
-  var busy=false;
-  function reconcile(opts){
-    // opts: {silent, useEtag, tries}
-    opts=opts||{};
-    if(!meta().token){ setStatus("off"); return; }
-    if(busy){ return; }
-    busy=true;
-    if(!opts.silent) setStatus("syncing");
-    getRemote(opts.useEtag).then(function(r){
-      var m=meta();
-      if(r.unchanged){
-        // remote hasn't moved; if we owe changes, redo without the ETag to get a sha and push
-        if(m.dirty){ throw {code:409}; }
-        setStatus("synced"); return;
-      }
-      if(r.missing){
-        log("remote file missing → creating rev 1");
-        return putRemote(null, 1).then(function(){ setStatus("synced"); });
-      }
-      if(r.rev > (m.rev||0)){
-        if(m.dirty){
-          // true concurrent edit: our edits win, based on the newest remote rev
-          log("conflict: remote rev "+r.rev+" vs local rev "+(m.rev||0)+" dirty → push on top");
-          return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); });
-        }
-        if(!sameData(r.data)){ applyRemote(r); safeReload(); return; }
-        var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2); setStatus("synced"); return;
-      }
-      // remote rev <= ours
-      if(m.dirty){
-        return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); });
-      }
-      if(!sameData(r.data)){
-        // same/older rev but different content (legacy file or manual edit) → remote is truth
-        log("self-heal: content differs at rev "+r.rev+" → applying remote");
-        applyRemote(r); safeReload(); return;
-      }
-      setStatus("synced");
-    }).catch(function(e){
-      if(e && e.code===409 && (opts.tries||0)<3){
-        busy=false;
-        log("sha race → retry "+((opts.tries||0)+1));
-        setTimeout(function(){ reconcile({silent:opts.silent, tries:(opts.tries||0)+1}); },800);
+  /* ── load on page open: GitHub is always the truth ── */
+  var curRev=0;
+  function applyRemote(r){
+    GS.data={};
+    for(var k in r.data){
+      if(cfg.watchKeys.indexOf(k)>=0)
+        GS.data[k] = (typeof r.data[k]==="string")? r.data[k] : JSON.stringify(r.data[k]);
+    }
+    sha=r.sha; curRev=r.rev||0; dirty=false;
+  }
+  function importLegacy(){
+    var found=false;
+    cfg.watchKeys.forEach(function(k){
+      try{ var v=localStorage.getItem(k); if(v!==null){ GS.data[k]=v; found=true; } }catch(e){}
+    });
+    return found;
+  }
+  function startApp(){
+    GS.ready=true;
+    if(window.__appBoot){ try{ window.__appBoot(); }catch(e){ log("app error: "+(e&&e.message)); } }
+  }
+  function boot(){
+    var m=meta();
+    if(!m.token){
+      startApp(); setStatus("off");
+      if(ui.panel) ui.panel.style.display="block";
+      return;
+    }
+    setStatus("loading");
+    getRemote().then(function(r){
+      if(r.missing || Object.keys(r.data||{}).length===0){
+        sha = r.missing? null : r.sha; curRev=r.rev||0;
+        if(importLegacy()){ dirty=true; startApp(); setStatus("pending"); log("legacy local data imported"); alert(t("legacy")); }
+        else { startApp(); setStatus("newFile"); }
         return;
       }
-      log("error: "+(e&&e.code? e.code : (e&&e.name)||"network"));
-      if(!opts.silent) setStatus(e&&e.code===401? "badToken" : "err");
-    }).finally(function(){ busy=false; });
+      applyRemote(r);
+      log("loaded rev "+curRev+" from GitHub");
+      startApp(); setStatus("loaded");
+    }).catch(function(e){
+      log("load error: "+(e&&e.code||e&&e.name||"network"));
+      setStatus(e&&e.code===401? "badToken" : e&&e.code===404? "notFound" : "loadErr");
+      /* intentionally NOT booting the app with stale/empty data on load failure */
+    });
   }
-  function doPush(silent){ reconcile({silent:silent}); }
 
-  /* ── first-time connect ── */
+  /* ── manual save ── */
+  var savingNow=false;
+  function doSave(){
+    var m=meta();
+    if(!m.token){ if(ui.panel) ui.panel.style.display="block"; return; }
+    if(savingNow) return;
+    savingNow=true; setStatus("saving");
+    putRemote(sha).then(function(){ setStatus("saved"); })
+    .catch(function(e){
+      if(e&&e.code===409){
+        // repo moved since we loaded → ask before overwriting
+        if(confirm(t("confirmOverwrite"))){
+          return getRemote().then(function(r){
+            return putRemote(r.missing? null : r.sha).then(function(){ setStatus("saved"); });
+          }).catch(function(e2){ log("overwrite failed: "+(e2&&e2.code||"network")); setStatus("err"); });
+        }
+        setStatus("pending"); return;
+      }
+      log("save error: "+(e&&e.code||e&&e.name||"network"));
+      setStatus(e&&e.code===401? "badToken":"err");
+    }).finally(function(){ savingNow=false; });
+  }
+
+  /* ── connect / disconnect ── */
   function connect(repo, token){
     var m=meta(); m.repo=repo.trim(); m.token=token.trim(); saveMeta(m);
-    setStatus("syncing");
-    api("GET","/repos/"+m.repo).then(function(res){
+    setStatus("loading");
+    tfetch(API+"/repos/"+m.repo,{headers:{ "Authorization":"Bearer "+m.token, "Accept":"application/vnd.github+json" }})
+    .then(function(res){
       if(res.status===401) throw {code:401};
       if(res.status===404) throw {code:404};
       if(!res.ok) throw {code:res.status};
@@ -204,20 +207,7 @@ function initGitSync(cfg){
     }).then(function(j){
       var mb=meta(); mb.branch=j.default_branch||"main"; saveMeta(mb);
       log("connected, branch="+mb.branch);
-      return getRemote();
-    }).then(function(r){
-      var localHasData = Object.keys(collect()).length>0;
-      if(r.missing || Object.keys(r.data||{}).length===0){
-        var sha = r.missing? null : r.sha;
-        return putRemote(sha, (r.rev||0)+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; });
-      }
-      if(!localHasData){ applyRemote(r); safeReload(); return; }
-      if(sameData(r.data)){
-        var m2=meta(); m2.rev=r.rev; m2.dirty=false; saveMeta(m2);
-        setStatus("synced"); ui.panel.style.display="none"; return;
-      }
-      if(confirm(t("confirmRemote"))){ applyRemote(r); safeReload(); }
-      else{ return putRemote(r.sha, r.rev+1).then(function(){ setStatus("synced"); ui.panel.style.display="none"; }); }
+      location.reload();                       // fresh boot = read the repo
     }).catch(function(e){
       log("connect error: "+(e&&e.code||"network"));
       setStatus(e&&e.code===401? "badToken" : e&&e.code===404? "notFound" : "err");
@@ -233,9 +223,11 @@ function initGitSync(cfg){
     + "border:1px solid var(--line,#28303d);border-radius:12px;font-size:.82rem;color:var(--muted,#8b96a5)}"
     + ".gs-dot{width:9px;height:9px;border-radius:50%;background:#8b96a5;flex:none}"
     + ".gs-dot.ok{background:#4ac26b}.gs-dot.bad{background:#e05555}.gs-dot.work{background:#e0c23c}"
-    + ".gs-bar button{margin-left:auto;border:1px solid var(--line,#28303d);background:var(--panel-2,#1c2330);"
+    + ".gs-bar button{border:1px solid var(--line,#28303d);background:var(--panel-2,#1c2330);"
     + "color:var(--text,#e8edf4);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:inherit;font-size:.8rem}"
-    + ".gs-bar button+button{margin-left:0}"
+    + ".gs-save{margin-left:auto;font-weight:700}"
+    + ".gs-save.pending{background:#8a5a1e;border-color:#e0a23c;color:#ffe2b0;animation:gsPulse 1.6s infinite}"
+    + "@keyframes gsPulse{50%{opacity:.75}}"
     + ".gs-panel{padding:14px;background:var(--panel,#161b23);border:1px solid var(--line,#28303d);border-radius:12px;display:none}"
     + ".gs-panel label{display:block;font-size:.8rem;color:var(--muted,#8b96a5);margin:8px 0 4px}"
     + ".gs-panel input{width:100%;padding:9px 12px;font-size:.92rem;font-family:inherit;background:var(--panel-2,#1c2330);"
@@ -253,7 +245,8 @@ function initGitSync(cfg){
   function buildUI(){
     var bar=document.createElement("div"); bar.className="gs-bar";
     bar.innerHTML='<span class="gs-dot" id="gsDot"></span><span id="gsText"></span>'
-      + '<button id="gsSync" type="button">⟳</button><button id="gsGear" type="button">⚙</button>';
+      + '<button id="gsSave" class="gs-save" type="button"></button>'
+      + '<button id="gsReload" type="button">⟳</button><button id="gsGear" type="button">⚙</button>';
     var panel=document.createElement("div"); panel.className="gs-panel";
     panel.innerHTML='<b id="gsTitle" style="font-size:.85rem"></b>'
       + '<label id="gsRepoL"></label><input id="gsRepo" placeholder="usuario/mis-datos" autocomplete="off">'
@@ -268,14 +261,19 @@ function initGitSync(cfg){
       anchor.parentNode.insertBefore(bar, anchor.nextSibling);
     }else{ document.body.prepend(panel); document.body.prepend(bar); }
     ui={ dot:document.getElementById("gsDot"), text:document.getElementById("gsText"),
-         panel:panel, repo:document.getElementById("gsRepo"), tok:document.getElementById("gsTok") };
+         panel:panel, repo:document.getElementById("gsRepo"), tok:document.getElementById("gsTok"),
+         save:document.getElementById("gsSave") };
     document.getElementById("gsGear").onclick=function(){
       panel.style.display = panel.style.display==="none"||!panel.style.display ? "block":"none";
       ui.repo.value = meta().repo||"";
       applyPanelText();
       var box=document.getElementById("gsLog"); if(box) box.textContent=LOG.join("\n");
     };
-    document.getElementById("gsSync").onclick=function(){ if(meta().token) reconcile({}); };
+    document.getElementById("gsReload").onclick=function(){
+      if(dirty && !confirm(t("confirmReload"))) return;
+      dirty=false; location.reload();
+    };
+    ui.save.onclick=doSave;
     document.getElementById("gsConnect").onclick=function(){
       if(ui.repo.value.trim() && ui.tok.value.trim()) connect(ui.repo.value, ui.tok.value);
     };
@@ -289,37 +287,27 @@ function initGitSync(cfg){
     document.getElementById("gsConnect").textContent=t("connect");
     document.getElementById("gsDisc").textContent=t("disconnect");
     document.getElementById("gsHint").textContent=t("hint");
-    document.getElementById("gsSync").title=t("syncNow");
+    document.getElementById("gsReload").title=t("reloadTitle");
+    ui.save.textContent=t("save");
   }
-  var lastStatus="off";
   function setStatus(s){
-    lastStatus=s;
     if(!ui.dot) return;
-    ui.dot.className="gs-dot "+(s==="synced"?"ok":s==="syncing"||s==="pending"?"work":s==="off"?"":"bad");
-    var txt=t(s==="synced"?"synced":s==="syncing"?"syncing":s==="pending"?"pending":s==="off"?"off":s==="badToken"?"badToken":s==="notFound"?"notFound":"err");
-    if(s==="synced") txt+=" · "+new Date().toTimeString().slice(0,5);
+    ui.dot.className="gs-dot "+(s==="loaded"||s==="saved"?"ok":s==="loading"||s==="saving"||s==="pending"||s==="newFile"?"work":s==="off"?"":"bad");
+    var txt=t(s);
+    if(s==="saved"||s==="loaded") txt+=" · "+new Date().toTimeString().slice(0,5);
     ui.text.textContent=txt;
+    ui.save.className="gs-save"+(s==="pending"?" pending":"");
+    ui.save.textContent=t("save");
   }
 
-  /* ── scheduling ── */
-  var POLL_MS=45000;
-  function checkRemote(){
-    if(document.visibilityState==="hidden" || pushTimer) return;
-    reconcile({silent: lastStatus==="synced", useEtag:true});
-  }
-  setInterval(checkRemote, POLL_MS);
+  /* ── guard against closing with unsaved edits ── */
+  window.addEventListener("beforeunload", function(e){
+    if(dirty){ e.preventDefault(); e.returnValue=""; return ""; }
+  });
 
   if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded", function(){ buildUI(); reconcile({}); });
-  }else{ buildUI(); reconcile({}); }
-
-  document.addEventListener("visibilitychange", function(){
-    if(document.visibilityState==="hidden"){
-      if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; reconcile({silent:true}); }
-    }else{
-      checkRemote();
-    }
-  });
+    document.addEventListener("DOMContentLoaded", function(){ buildUI(); boot(); });
+  }else{ buildUI(); boot(); }
 }
 
 /* ── fitness site config ── */
@@ -327,5 +315,5 @@ initGitSync({
   appName:"ft",
   filePath:"fitness-data.json",
   watchKeys:["ftdash_state_v2","ft_targets_v1","ft_foods_v1","ft_diary_v1","ftdash_history_v1"],
-  getLang:function(){ try{ var s=JSON.parse(localStorage.getItem("ftdash_state_v2")||"{}"); return s.lang||"en"; }catch(e){ return "en"; } }
+  getLang:function(){ try{ var s=JSON.parse((window.GS&&GS.get("ftdash_state_v2"))||"{}"); return s.lang||"en"; }catch(e){ return "en"; } }
 });
